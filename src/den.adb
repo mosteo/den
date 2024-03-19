@@ -1,69 +1,87 @@
-with AAA.Strings;
+with Ada.Directories;
 
-with Ada.Containers.Indefinite_Ordered_Sets;
-
+with GNAT.Directory_Operations;
 with GNAT.OS_Lib;
 
-package Den is
+package body Den is
 
-   subtype Path is String;
-   --  A raw, system-encoded path denoting a file or folder
+   package Dirs renames Ada.Directories;
+   package Ops renames GNAT.Directory_Operations;
+   package OS renames GNAT.OS_Lib;
 
-   subtype Absolute_Path is Path
-     with Dynamic_Predicate =>
-       GNAT.OS_Lib.Is_Absolute_Path (Absolute_Path);
+   use all type Dirs.File_Kind;
 
-   subtype Relative_Path is Path
-     with Dynamic_Predicate =>
-       not GNAT.OS_Lib.Is_Absolute_Path (Relative_Path);
-   --  Just to make intentions clear
+   ------------
+   -- Exists --
+   ------------
 
-   subtype Paths is AAA.Strings.Set;
-   --  A bunch of paths, sorted alphabetically
+   function Exists (This : Path) return Boolean
+   is (Dirs.Exists (This));
 
-   function Exists (This : Path) return Boolean;
-   --  True if This designates some existing filesystem entity; False for
-   --  broken links.
+   ------------------
+   -- Is_Directory --
+   ------------------
 
    function Is_Directory (This : Path) return Boolean
-     with Post => (if not Exists (This) then not Is_Directory'Result);
-   --  True for softlinks pointing to a directory
+   is (Dirs.Exists (This) and then Dirs.Kind (This) = Directory);
+
+   -------------
+   -- Is_File --
+   -------------
 
    function Is_File (This : Path) return Boolean
-     with Post => (if not Exists (This) then not Is_File'Result);
+   is (Dirs.Exists (This) and then Dirs.Kind (This) = Ordinary_File);
+
+   ----------------
+   -- Is_Special --
+   ----------------
 
    function Is_Special (This : Path) return Boolean
-     with Post => (if not Exists (This) then not Is_Special'Result);
+   is (Dirs.Exists (This) and then Dirs.Kind (This) = Special_File);
 
-   function Is_Softlink (This : Path) return Boolean;
-   --  Always false in platforms without softlink support. True even for broken
-   --  links.
+   -----------------
+   -- Is_Softlink --
+   -----------------
 
-   function Is_Broken (This : Path) return Boolean
-   is (Is_Softlink (This) and then not Exists (This));
-   --  Note that this is false for a path that points to nothing
+   function Is_Softlink (This : Path) return Boolean
+   is (OS.Is_Symbolic_Link (This));
 
-   function Target (This : Path) return Absolute_Path
-     with Post =>
-       (if Exists (This)
-          then Target'Result /= ""
-        elsif Is_Softlink (This)
-          then Target'Result /= ""
-        else
-          Target'Result /= "");
-   --  The canonical path for a softlink, even if broken, or the original path
-   --  otherwise, if it exists, or "" if not.
+   ------------
+   -- Target --
+   ------------
 
-   function Ls (This : Path) return Paths
-     with Post =>
-       (case Exists (This) is
-          when False => Ls'Result.Is_Empty,
-          when True  =>
-              (if Is_Softlink (This) or else not Is_Directory (This)
-               then Ls'Result.Length in 1
-               else True));
-   --  Return immediate children of a directory, unless This is not one and
-   --  then the result is itself, if it exists. Won't include "." or "..".
+   function Target (This : Path) return Path
+   is (if Exists (This) then
+          Dirs.Full_Name (This)
+       elsif Is_Softlink (This) then -- Must be broken
+          raise Program_Error with "unimplemented"
+       else This);
+
+   --------
+   -- Ls --
+   --------
+
+   function Ls (This : Path) return Paths is
+   begin
+      return Result : Paths do
+         if not Exists (This) then
+            return;
+         end if;
+
+         if Is_Softlink (This) or else not Is_Directory (This) then
+            Result.Insert
+              (OS.Normalize_Pathname (This, Resolve_Links => False));
+            return;
+         end if;
+
+         declare
+            Dir  : Ops.Dir_Type;
+            Name : String (1 .. Max_Length);
+         begin
+            --  Use a dynamically growing limit with retry for max length here.
+         end;
+      end return;
+   end Ls;
 
    function Dir (This : Path) return Paths renames Ls;
 
