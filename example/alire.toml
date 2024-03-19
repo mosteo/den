@@ -1,5 +1,5 @@
-name = "den"
-description = "Directory Enumeration Soft-link Aware"
+name = "example"
+description = "Example of using Den"
 version = "0.1.0-dev"
 
 authors = ["Alejandro R. Mosteo"]
@@ -7,7 +7,12 @@ maintainers = ["Alejandro R. Mosteo <alejandro@mosteo.com>"]
 maintainers-logins = ["mosteo"]
 licenses = "MIT OR Apache-2.0 WITH LLVM-exception"
 website = ""
-tags = ["directory", "folder", "enumeration", "traversal", "softlink"]
+tags = []
+
+executables = ["example"]
 
 [[depends-on]]
-aaa = "~0.2.6"
+den = "*"
+
+[[pins]]
+den = { path='..' }
