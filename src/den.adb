@@ -1,12 +1,10 @@
 with Ada.Directories;
 
-with GNAT.Directory_Operations;
-with GNAT.OS_Lib;
+with Den.Iterators;
 
 package body Den is
 
    package Dirs renames Ada.Directories;
-   package Ops renames GNAT.Directory_Operations;
    package OS renames GNAT.OS_Lib;
 
    use all type Dirs.File_Kind;
@@ -74,70 +72,39 @@ package body Den is
             return;
          end if;
 
-         declare
-            Dir  : Ops.Dir_Type;
-            Name : String (1 .. Max_Length);
-         begin
-            --  Use a dynamically growing limit with retry for max length here.
-         end;
+         for Item of Iterators.Iterate (This) loop
+            Result.Insert (Item);
+         end loop;
       end return;
    end Ls;
 
-   function Dir (This : Path) return Paths renames Ls;
-
-   type Filters is interface;
-
-   function Match (This : Filters; Item : Path) return Boolean is abstract;
-
-   type No_Filter is new Filters with null record;
-
-   overriding function Match (This : No_Filter;
-                              Item : Path)
-                              return Boolean is (True) with Inline;
-
-   subtype Depths is Natural;
-
-   type Item (Length : Natural) is record
-      Path  : Absolute_Path (1 .. Length);
-      Depth : Depths;
-      --  0 depth is for the top-level file only, <>/file_0_depth
-      --  1 depth is for files inside top-level dir, <>/dir/files_1_depth
-   end record;
-
-   function "<" (L, R : Item) return Boolean is (L.Path < R.Path);
-
-   type Actions is access procedure (This  : Item;
-                                     Enter : in out Boolean;
-                                     Stop  : in out Boolean);
-
-   type Find_Options is record
-      Enter_Regular_Dirs    : Boolean := True;
-      Enter_Softlinked_Dirs : Boolean := False;
-      Visit_Softlinks       : Boolean := True;
-   end record;
+   ----------
+   -- Find --
+   ----------
 
    procedure Find
      (This    : Path;
       Action  : Actions;
       Options : Find_Options  := (others => <>);
-      Filter  : Filters'Class := No_Filter'(null record));
-   --  Will visit all children of This, or only This if not a directory, if it
-   --  exists. If given a Filter, Action will be only called for those matching
-   --  it. The order of visiting is alphabetical. If Enter_Softlinked_Dirs,
-   --  beware that loops can occur. "." and ".." are never visited.
-   --  Complexity is O(n log n) due to the sorting of entries in a directory.
+      Filter  : Filters'Class := No_Filter'(null record))
+   is null;
 
-   package Item_Sets is new Ada.Containers.Indefinite_Ordered_Sets (Item);
-
-   subtype Items is Item_Sets.Set;
+   ----------
+   -- Find --
+   ----------
 
    function Find
      (This    : Path;
       Action  : Actions;
       Options : Find_Options  := (others => <>);
       Filter  : Filters'Class := No_Filter'(null record))
-      return Items;
-   --  As the procedure version, but returns the path that would be visited.
-   --  May take a long time without feedback...
+      return Items
+   is (raise Program_Error);
+
+   -------------
+   -- Current --
+   -------------
+
+   function Current return Path renames Dirs.Current_Directory;
 
 end Den;

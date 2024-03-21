@@ -43,14 +43,14 @@ package Den is
    is (Is_Softlink (This) and then not Exists (This));
    --  Note that this is false for a path that points to nothing
 
-   function Target (This : Path) return Absolute_Path
+   function Target (This : Path) return Path
      with Post =>
        (if Exists (This)
-          then Target'Result /= ""
+          then Target'Result /= "" and then Target'Result in Absolute_Path
         elsif Is_Softlink (This)
           then Target'Result /= ""
         else
-          Target'Result /= "");
+          Target'Result = "");
    --  The canonical path for a softlink, even if broken, or the original path
    --  otherwise, if it exists, or "" if not.
 
@@ -119,7 +119,10 @@ package Den is
       Options : Find_Options  := (others => <>);
       Filter  : Filters'Class := No_Filter'(null record))
       return Items;
-   --  As the procedure version, but returns the path that would be visited.
+   --  As the procedure version, but returns the paths that would be visited.
    --  May take a long time without feedback...
+
+   function Current return Path;
+   function CWD return Path renames Current;
 
 end Den;
