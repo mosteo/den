@@ -43,6 +43,8 @@ package Den is
    is (Is_Softlink (This) and then not Exists (This));
    --  Note that this is false for a path that points to nothing
 
+   function Full_Path (This : Path) return Absolute_Path;
+
    function Target (This : Path) return Path
      with Post =>
        (if Exists (This)
@@ -54,7 +56,9 @@ package Den is
    --  The canonical path for a softlink, even if broken, or the original path
    --  otherwise, if it exists, or "" if not.
 
-   function Ls (This : Path) return Paths
+   function Ls (This      : Path;
+                Normalize : Boolean := False)
+                return Paths
      with Post =>
        (case Exists (This) is
           when False => Ls'Result.Is_Empty,
@@ -64,8 +68,12 @@ package Den is
                else True));
    --  Return immediate children of a directory, unless This is not one and
    --  then the result is itself, if it exists. Won't include "." or "..".
+   --  Paths are absolute.
 
-   function Dir (This : Path) return Paths renames Ls;
+   function Dir (This      : Path;
+                 Normalize : Boolean := False)
+                 return Paths
+                 renames Ls;
 
    type Filters is interface;
 
@@ -80,7 +88,7 @@ package Den is
    subtype Depths is Natural;
 
    type Item (Length : Natural) is record
-      Path  : Absolute_Path (1 .. Length);
+      Path  : Den.Path (1 .. Length);
       Depth : Depths;
       --  0 depth is for the top-level file only, <>/file_0_depth
       --  1 depth is for files inside top-level dir, <>/dir/files_1_depth
@@ -88,19 +96,18 @@ package Den is
 
    function "<" (L, R : Item) return Boolean is (L.Path < R.Path);
 
-   type Actions is access procedure (This  : Item;
-                                     Enter : in out Boolean;
-                                     Stop  : in out Boolean);
-
    type Find_Options is record
       Enter_Regular_Dirs    : Boolean := True;
       Enter_Softlinked_Dirs : Boolean := False;
       Visit_Softlinks       : Boolean := True;
+      Normalize_Paths       : Boolean := False;
    end record;
 
    procedure Find
      (This    : Path;
-      Action  : Actions;
+      Action  : access procedure (This  : Item;
+                                  Enter : in out Boolean;
+                                  Stop  : in out Boolean);
       Options : Find_Options  := (others => <>);
       Filter  : Filters'Class := No_Filter'(null record));
    --  Will visit all children of This, or only This if not a directory, if it
@@ -115,7 +122,6 @@ package Den is
 
    function Find
      (This    : Path;
-      Action  : Actions;
       Options : Find_Options  := (others => <>);
       Filter  : Filters'Class := No_Filter'(null record))
       return Items;

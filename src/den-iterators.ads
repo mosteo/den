@@ -5,7 +5,8 @@ package Den.Iterators is
    --  RAII type over GNAT.Dir_Operations. It iterates over all directory
    --  entries, including broken links and links to directories, so be wary to
    --  skip as needed. "." and ".." are not iterated over. Order of iteration
-   --  is undefined. There is no limit on max name length.
+   --  is undefined. There is no limit on max name length. Names returned are
+   --  the base name directly stored in the directory.
 
    type Dir_Iterator (<>) is limited private with
      Iterable => (First       => First,
