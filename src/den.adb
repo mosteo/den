@@ -1,8 +1,10 @@
 with Ada.Directories;
 
+with C_Strings;
+
 with Den.Iterators;
 
-with GNAT.IO; use GNAT.IO;
+--  with GNAT.IO; use GNAT.IO;
 
 package body Den is
 
@@ -50,8 +52,21 @@ package body Den is
    -- Full_Path --
    ---------------
 
-   function Full_Path (This : Path) return Absolute_Path
-   is (OS.Normalize_Pathname
+   function Full_Path (This          : Path;
+                       Resolve_Links : Boolean := True)
+                       return Absolute_Path
+   is (OS.Normalize_Pathname (This, Resolve_Links => Resolve_Links));
+
+   -------------------
+   -- Target_Length --
+   -------------------
+
+   function Target_Length (This : Path) return Positive is
+      function Link_Len (Link : C_Strings.Chars_Ptr) return C_Strings.C.size_t
+        with Import, Convention => C;
+   begin
+      return Positive (Link_Len (C_Strings.To_C (This).To_Ptr));
+   end Target_Length;
 
    ------------
    -- Target --
@@ -68,9 +83,26 @@ package body Den is
    -- Ls --
    --------
 
-   function Ls (This      : Path;
-                Normalize : Boolean := False)
+   function Ls (This    : Path;
+                Options : Ls_Options := (others => <>))
                 return Paths is
+
+      ------------
+      -- Insert --
+      ------------
+
+      procedure Insert (This : Path; Into : in out Paths) is
+      begin
+         if Options.Normalize_Paths then
+            Into.Include -- resolved links may point to the same file
+              (OS.Normalize_Pathname
+                 (This,
+                  Resolve_Links => Options.Resolve_Links));
+         else
+            Into.Insert (This);
+         end if;
+      end Insert;
+
    begin
       return Result : Paths do
          if not Exists (This) then
@@ -78,22 +110,12 @@ package body Den is
          end if;
 
          if Is_Softlink (This) or else not Is_Directory (This) then
-            if Normalize then
-               Result.Insert
-                 (OS.Normalize_Pathname (This, Resolve_Links => False));
-            else
-               Result.Insert (This);
-            end if;
+            Insert (This, Into => Result);
             return;
          end if;
 
          for Item of Iterators.Iterate (This) loop
-            if Normalize then
-               Result.Insert
-                 (OS.Normalize_Pathname (Item, Resolve_Links => False));
-            else
-               Result.Insert (Item);
-            end if;
+            Insert (Item, Into => Result);
          end loop;
       end return;
    end Ls;
@@ -133,13 +155,19 @@ package body Den is
       procedure Find (Parent : Path; Depth : Positive) is
          Base : constant Path :=
                   (if Options.Normalize_Paths
-                   then OS.Normalize_Pathname (Parent, Resolve_Links => False)
-                      & OS.Directory_Separator
+                   then OS.Normalize_Pathname
+                     (Parent,
+                      Resolve_Links => Options.Resolve_Links)
+                    & OS.Directory_Separator
                    else Parent);
       begin
-         for Item of Ls (Parent, Normalize => False) loop
+         for Item of Ls (Parent, (Normalize_Paths => False, others => <>)) loop
             if Stop then
                return;
+            end if;
+
+            if Filter.Match (Item) then
+               goto Continue;
             end if;
 
             declare
@@ -164,6 +192,8 @@ package body Den is
                   end if;
                end if;
             end;
+
+            <<Continue>>
          end loop;
       end Find;
 
@@ -199,9 +229,9 @@ package body Den is
             -- Find --
             ----------
 
-            procedure Find (This  : Item;
-                            Enter : in out Boolean;
-                            Stop  : in out Boolean)
+            procedure Find (This         : Item;
+                            Unused_Enter : in out Boolean;
+                            Unused_Stop  : in out Boolean)
             is
             begin
                Result.Insert (This);

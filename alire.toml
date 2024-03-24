@@ -11,3 +11,9 @@ tags = ["directory", "folder", "enumeration", "traversal", "softlink"]
 
 [[depends-on]]
 aaa = "~0.2.6"
+
+[[depends-on]]
+c_strings = "^1.0.0"
+
+[[pins]]
+c_strings = { path='../c_strings' }

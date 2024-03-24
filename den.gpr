@@ -14,6 +14,8 @@ project Den is
      external ("DEN_LIBRARY_TYPE", external ("LIBRARY_TYPE", "static"));
    for Library_Kind use Library_Type;
 
+   for Languages use ("Ada", "C");
+
    package Compiler is
       for Default_Switches ("Ada") use Den_Config.Ada_Compiler_Switches;
    end Compiler;

@@ -43,7 +43,14 @@ package Den is
    is (Is_Softlink (This) and then not Exists (This));
    --  Note that this is false for a path that points to nothing
 
-   function Full_Path (This : Path) return Absolute_Path;
+   function Full_Path (This          : Path;
+                       Resolve_Links : Boolean := True)
+                       return Absolute_Path;
+
+   function Target_Length (This : Path) return Positive
+     with Pre => Is_Softlink (This);
+   --  The length of a softlink target name. Not generally useful to clients
+   --  but who knows...
 
    function Target (This : Path) return Path
      with Post =>
@@ -56,8 +63,15 @@ package Den is
    --  The canonical path for a softlink, even if broken, or the original path
    --  otherwise, if it exists, or "" if not.
 
-   function Ls (This      : Path;
-                Normalize : Boolean := False)
+   type Ls_Options is record
+      Normalize_Paths       : Boolean := False;
+      Resolve_Links         : Boolean := False;
+   end record
+     with Dynamic_Predicate =>
+       (if Ls_Options.Resolve_Links then Ls_Options.Normalize_Paths);
+
+   function Ls (This    : Path;
+                Options : Ls_Options := (others => <>))
                 return Paths
      with Post =>
        (case Exists (This) is
@@ -68,10 +82,9 @@ package Den is
                else True));
    --  Return immediate children of a directory, unless This is not one and
    --  then the result is itself, if it exists. Won't include "." or "..".
-   --  Paths are absolute.
 
-   function Dir (This      : Path;
-                 Normalize : Boolean := False)
+   function Dir (This    : Path;
+                 Options : Ls_Options := (others => <>))
                  return Paths
                  renames Ls;
 
@@ -101,7 +114,10 @@ package Den is
       Enter_Softlinked_Dirs : Boolean := False;
       Visit_Softlinks       : Boolean := True;
       Normalize_Paths       : Boolean := False;
-   end record;
+      Resolve_Links         : Boolean := False;
+   end record
+     with Dynamic_Predicate =>
+       (if Find_Options.Resolve_Links then Find_Options.Normalize_Paths);
 
    procedure Find
      (This    : Path;

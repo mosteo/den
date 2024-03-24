@@ -21,4 +21,6 @@ begin
    loop
       Put_Line (Item.Path);
    end loop;
+
+   Put_Line (Den.Target_Length ("cases/links/e")'Image);
 end Example;
