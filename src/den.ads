@@ -54,14 +54,12 @@ package Den is
 
    function Target (This : Path) return Path
      with Post =>
-       (if Exists (This)
-          then Target'Result /= "" and then Target'Result in Absolute_Path
-        elsif Is_Softlink (This)
+       (if Is_Softlink (This)
           then Target'Result /= ""
         else
-          Target'Result = "");
-   --  The canonical path for a softlink, even if broken, or the original path
-   --  otherwise, if it exists, or "" if not.
+          Target'Result = This);
+   --  The target of a softlink, even if broken, or the original path given.
+   --  The returned result is not normalized or resolved, use Full_Path.
 
    type Ls_Options is record
       Normalize_Paths       : Boolean := False;

@@ -2,6 +2,7 @@
 #ifdef _WIN32
     #define readlink(a, b, c) -1
 #else
+    #include <errno.h>
     #include <limits.h>
     #include <stdlib.h>
     #include <sys/stat.h>
@@ -26,21 +27,22 @@ ssize_t link_len(const char *path) {
         return sb.st_size;
 }
 
-    // buf = malloc(bufsiz);
-    // if (buf == NULL) {
-    //     perror("malloc");
-    //     exit(EXIT_FAILURE);
-    // }
+int link_target(const char *path, char *buf, ssize_t bufsiz) {
 
-    // nbytes = readlink(argv[1], buf, bufsiz);
-    // if (nbytes == -1) {
-    //     perror("readlink");
-    //     exit(EXIT_FAILURE);
-    // }
+    int nbytes = readlink(path, buf, bufsiz);
+    if (nbytes == -1) {
+        return errno;
+    }
 
-    // printf("'%s' points to '%.*s'\n", argv[1], (int) nbytes, buf);
+    /* If the return value was equal to the buffer size, then the link target
+        was larger than expected (perhaps because the target was changed
+        between the call to lstat() and the call to readlink()). */
 
-    // /* If the return value was equal to the buffer size, then the
-    //     the link target was larger than expected (perhaps because the
-    //     target was changed between the call to lstat() and the call to
-    //     readlink()). Warn the user that the returned target may have
+    if (nbytes == bufsiz)
+        return -1;
+    else {
+        buf[nbytes] = '\0';
+        return 0;
+    }
+
+}

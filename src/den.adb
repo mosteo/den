@@ -73,11 +73,42 @@ package body Den is
    ------------
 
    function Target (This : Path) return Path
-   is (if Exists (This) then
-          Dirs.Full_Name (This)
-       elsif Is_Softlink (This) then -- Must be broken
-          raise Program_Error with "unimplemented"
-       else This);
+   is
+      use C_Strings;
+      use type C.int;
+
+      function Link_Target (This, Buffer : Chars_Ptr;
+                            Buffer_Length : C.size_t)
+                            return C.int
+        with Import, Convention => C;
+   begin
+      if Is_Softlink (This) then
+         loop
+            --  There's a race condition in which a changing target of
+            --  increased length cannot be retrieved; we retry until satisfied.
+            declare
+               Cbuf : C_String := C_Strings.Buffer (Target_Length (This) + 1);
+               Code : constant C.int
+                 := Link_Target (To_C (This).To_Ptr,
+                                 Cbuf.To_Ptr,
+                                 Cbuf.C_Size);
+            begin
+               case Code is
+                  when 0 =>
+                     return Cbuf.To_Ada;
+                  when -1 =>
+                     null; -- Retry with new buffer size
+                  when others =>
+                     raise Program_Error
+                       with "cannot retrieve link target, error: "
+                            & Code'Image;
+               end case;
+            end;
+         end loop;
+      else
+         return This;
+      end if;
+   end Target;
 
    --------
    -- Ls --
