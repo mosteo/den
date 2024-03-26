@@ -1,8 +1,11 @@
 with Den;
 
 with GNAT.IO; use GNAT.IO;
+with GNAT.OS_Lib;
 
 procedure Example is
+   package OS renames GNAT.OS_Lib;
+   use Den;
 begin
    Put_Line ("CURRENT DIR LS: " & Den.Current);
    for Path of Den.Ls (".") loop
@@ -22,5 +25,7 @@ begin
       Put_Line (Item.Path);
    end loop;
 
-   Put_Line (Den.Target_Length ("cases/links/e")'Image);
+   Put_Line (OS.Normalize_Pathname ("cases/links/f", Resolve_Links => False));
+   Put_Line (Full_Path ("cases/links/f", False));
+   Put_Line (Full_Path ("cases/links/f", True));
 end Example;

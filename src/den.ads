@@ -6,7 +6,10 @@ with GNAT.OS_Lib;
 
 package Den is
 
-   subtype Path is String;
+   Dir_Separator : constant Character;
+
+   subtype Path is String
+     with Static_Predicate => Path /= "";
    --  A raw, system-encoded path denoting a file or folder
 
    subtype Absolute_Path is Path
@@ -46,6 +49,20 @@ package Den is
    function Full_Path (This          : Path;
                        Resolve_Links : Boolean := True)
                        return Absolute_Path;
+   --  This will take care in case of broken
+
+   function Name (This : Path) return Path
+     with Post => (for all Char of Name'Result => Char /= Dir_Separator);
+   --  Just the last component in the path
+
+   function Parent (This : Path) return Path
+     with Pre => (for some Char of This => Char = Dir_Separator);
+   --  Will not try to obtain absolute paths
+
+   function Resolve (This : Path; Recursive : Boolean := False) return Path;
+   --  Identity for non-links, else change This for its target without
+   --  expanding the path. If recursive, go on as long as the resolved
+   --  target still is a softlink.
 
    function Target_Length (This : Path) return Positive
      with Pre => Is_Softlink (This);
@@ -144,5 +161,16 @@ package Den is
 
    function Current return Path;
    function CWD return Path renames Current;
+
+   package Operators is
+
+      function "/" (L, R : Path) return Path
+        with Pre => R not in Absolute_Path;
+
+   end Operators;
+
+private
+
+   dir_separator : constant Character := GNAT.OS_Lib.Directory_Separator;
 
 end Den;

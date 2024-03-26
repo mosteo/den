@@ -13,6 +13,23 @@ package body Den is
 
    use all type Dirs.File_Kind;
 
+   ---------------
+   -- Operators --
+   ---------------
+
+   package body Operators is
+
+      ---------
+      -- "/" --
+      ---------
+
+      function "/" (L, R : Path) return Path
+      is (if L (L'Last) = Dir_Separator
+          then L & R
+          else L & Dir_Separator & R);
+
+   end Operators;
+
    ------------
    -- Exists --
    ------------
@@ -55,7 +72,33 @@ package body Den is
    function Full_Path (This          : Path;
                        Resolve_Links : Boolean := True)
                        return Absolute_Path
-   is (OS.Normalize_Pathname (This, Resolve_Links => Resolve_Links));
+   is
+      use Operators;
+   begin
+      if Is_Softlink (This) and then Resolve_Links then
+         return
+           Full_Path
+             (Parent (OS.Normalize_Pathname (This, Resolve_Links => False))
+              / Target (This),
+              Resolve_Links => Resolve_Links);
+       else
+         return OS.Normalize_Pathname (This, Resolve_Links => Resolve_Links);
+      end if;
+   end Full_Path;
+
+   ----------
+   -- Name --
+   ----------
+
+   function Name (This : Path) return Path
+   is (Dirs.Simple_Name (This));
+
+   ------------
+   -- Parent --
+   ------------
+
+   function Parent (This : Path) return Path
+   is (Dirs.Containing_Directory (This));
 
    -------------------
    -- Target_Length --
@@ -278,6 +321,7 @@ package body Den is
    -- Current --
    -------------
 
-   function Current return Path renames Dirs.Current_Directory;
+   function Current return Path
+   is (Dirs.Current_Directory);
 
 end Den;
