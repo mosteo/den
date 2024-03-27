@@ -16,8 +16,9 @@ package body Den.Iterators is
       function Iterate return Lists.List is
 
          Dir : Ops.Dir_Type;
-         type Path_Access is access Path;
-         procedure Free is new Ada.Unchecked_Deallocation (Path, Path_Access);
+         type Path_Access is access String; -- Predicate on Path gives trouble
+         procedure Free is
+           new Ada.Unchecked_Deallocation (String, Path_Access);
 
          Last : Natural;
          Max  : Positive := 1024;

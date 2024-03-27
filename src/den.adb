@@ -51,6 +51,31 @@ package body Den is
    function Is_File (This : Path) return Boolean
    is (Dirs.Exists (This) and then Dirs.Kind (This) = Ordinary_File);
 
+   -------------
+   -- Is_Root --
+   -------------
+
+   function Is_Root (This : Path) return Boolean is
+      subtype Drive_Letter is Character with Dynamic_Predicate =>
+        Drive_Letter in 'a' .. 'z' | 'A' .. 'Z';
+   begin
+      return
+        This = "/"
+        or else
+          (Dir_Separator = '\' -- on Windows
+           and then
+             (This = "\"
+              or else
+                (This'Length = 3
+                 and then This (This'Last - 1) = ':'
+                 and then This (This'Last) = '\'
+                 and then This (This'First) in Drive_Letter)
+              or else
+                (This'Length = 2
+                 and then This (This'Last) = ':'
+                 and then (This (This'First) in Drive_Letter))));
+   end Is_Root;
+
    ----------------
    -- Is_Special --
    ----------------
@@ -75,13 +100,15 @@ package body Den is
    is
       use Operators;
    begin
-      if Is_Softlink (This) and then Resolve_Links then
-         return
-           Full_Path
-             (Parent (OS.Normalize_Pathname (This, Resolve_Links => False))
-              / Target (This),
-              Resolve_Links => Resolve_Links);
-       else
+      if Is_Softlink (This) and then not Resolve_Links then
+         if Has_Parent (This) then
+            return
+              Parent (OS.Normalize_Pathname (This, Resolve_Links => False))
+                / Name (This);
+         else
+            return Current / This;
+         end if;
+      else
          return OS.Normalize_Pathname (This, Resolve_Links => Resolve_Links);
       end if;
    end Full_Path;
@@ -99,6 +126,30 @@ package body Den is
 
    function Parent (This : Path) return Path
    is (Dirs.Containing_Directory (This));
+
+   -------------
+   -- Resolve --
+   -------------
+
+   function Resolve (This : Path) return Path is
+      use Operators;
+   begin
+      if Is_Softlink (This) then
+         declare
+            Link_Target : constant Path := Target (This);
+         begin
+            if Is_Absolute (Link_Target) then
+               return Link_Target;
+            elsif Has_Parent (This) then
+               return Parent (This) / Link_Target;
+            else
+               return Link_Target;
+            end if;
+         end;
+      else
+         return This;
+      end if;
+   end Resolve;
 
    -------------------
    -- Target_Length --
@@ -240,7 +291,7 @@ package body Den is
                return;
             end if;
 
-            if Filter.Match (Item) then
+            if not Filter.Match (Item) then
                goto Continue;
             end if;
 

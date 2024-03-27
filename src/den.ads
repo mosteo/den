@@ -28,12 +28,18 @@ package Den is
    --  True if This designates some existing filesystem entity; False for
    --  broken links.
 
+   function Is_Absolute (This : Path) return Boolean
+                         renames GNAT.OS_Lib.Is_Absolute_Path;
+
    function Is_Directory (This : Path) return Boolean
      with Post => (if not Exists (This) then not Is_Directory'Result);
    --  True for softlinks pointing to a directory
 
    function Is_File (This : Path) return Boolean
      with Post => (if not Exists (This) then not Is_File'Result);
+
+   function Is_Root (This : Path) return Boolean;
+   --  True if This denotes explicitly a root name ("/", "C:\")
 
    function Is_Special (This : Path) return Boolean
      with Post => (if not Exists (This) then not Is_Special'Result);
@@ -55,14 +61,21 @@ package Den is
      with Post => (for all Char of Name'Result => Char /= Dir_Separator);
    --  Just the last component in the path
 
+   function Has_Parent (This : Path) return Boolean
+   is (not Is_Root (This)
+       and then (for some Char of This => Char = Dir_Separator));
+   --  Say if This, as-is, has a parent. It may have one logically if it's a
+   --  simple name and the current directory is not the root, but not if given
+   --  as a simple name.
+
    function Parent (This : Path) return Path
      with Pre => (for some Char of This => Char = Dir_Separator);
    --  Will not try to obtain absolute paths
 
-   function Resolve (This : Path; Recursive : Boolean := False) return Path;
+   function Resolve (This : Path) return Path;
    --  Identity for non-links, else change This for its target without
-   --  expanding the path. If recursive, go on as long as the resolved
-   --  target still is a softlink.
+   --  expanding the path. Note that the result might be a new soft link.
+   --  To obtain the canonical absolute path, use Full_Path.
 
    function Target_Length (This : Path) return Positive
      with Pre => Is_Softlink (This);
@@ -76,7 +89,10 @@ package Den is
         else
           Target'Result = This);
    --  The target of a softlink, even if broken, or the original path given.
-   --  The returned result is not normalized or resolved, use Full_Path.
+   --  This returns the information proper stored in the softlink, not the
+   --  original path with the target replacing the softlink, use Resolve for
+   --  that. The returned result is not normalized or resolved, use Full_Path
+   --  for that.
 
    type Ls_Options is record
       Normalize_Paths       : Boolean := False;
@@ -106,6 +122,7 @@ package Den is
    type Filters is interface;
 
    function Match (This : Filters; Item : Path) return Boolean is abstract;
+   --  Paths matched will be visited out
 
    type No_Filter is new Filters with null record;
 
