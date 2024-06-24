@@ -69,7 +69,7 @@ package Den is
    --  as a simple name.
 
    function Parent (This : Path) return Path
-     with Pre => (for some Char of This => Char = Dir_Separator);
+     with Pre => not Is_Root (This) and then Has_Parent (This);
    --  Will not try to obtain absolute paths
 
    function Resolve (This : Path) return Path;
@@ -122,7 +122,7 @@ package Den is
    type Filters is interface;
 
    function Match (This : Filters; Item : Path) return Boolean is abstract;
-   --  Paths matched will be visited out
+   --  Paths matched will be visited
 
    type No_Filter is new Filters with null record;
 

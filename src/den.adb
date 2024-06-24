@@ -106,7 +106,7 @@ package body Den is
               Parent (OS.Normalize_Pathname (This, Resolve_Links => False))
                 / Name (This);
          else
-            return Current / This;
+            return Current / This; -- ??? REVIEW
          end if;
       else
          return OS.Normalize_Pathname (This, Resolve_Links => Resolve_Links);
