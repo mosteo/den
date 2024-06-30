@@ -6,11 +6,26 @@ with GNAT.OS_Lib;
 
 package Den is
 
+   Recursive_Softlink : exception;
+   --  Raised for softlinks that point to themselves, directly or through
+   --  several hops, and that hence cannot be resolved as a canonical path.
+
    Dir_Separator : constant Character;
 
+   Parent_Dir    : constant String := "..";
+   Current_Dir   : constant String := ".";
+
+   --  A raw, system-encoded path denoting a file or folder, but well-formed
    subtype Path is String
-     with Static_Predicate => Path /= "";
-   --  A raw, system-encoded path denoting a file or folder
+     with Dynamic_Predicate => Path /= ""
+     --  not empty
+     and then (Path (Path'Last) /= Dir_Separator or else String_Is_Root (Path))
+     --  not ending in '/' unless a filesystem root
+     and then (for all I in Path'Range =>
+                 (if I < Path'Last then
+                      Path (I) /= Dir_Separator
+                      or else Path (I + 1) /= Dir_Separator));
+   --  not containing consecutive separators
 
    subtype Absolute_Path is Path
      with Dynamic_Predicate =>
@@ -19,46 +34,92 @@ package Den is
    subtype Relative_Path is Path
      with Dynamic_Predicate =>
        not GNAT.OS_Lib.Is_Absolute_Path (Relative_Path);
-   --  Just to make intentions clear
 
-   subtype Paths is AAA.Strings.Set;
+   subtype Normal_Path is Path with Dynamic_Predicate =>
+     (for all P of Split (Normal_Path) => P not in Relative_Parts);
+
+   subtype Hard_Path is Path with Dynamic_Predicate =>
+     (for all A of Ancestors (Hard_Path) => Kind (A) /= Softlink);
+
+   subtype Canonical_Path is Path with Dynamic_Predicate =>
+     Is_Absolute (Canonical_Path)
+     and then Canonical_Path in Hard_Path
+     and then Canonical_Path in Normal_Path;
+   --  The unique path if there are no hard links involved.
+
+   type Paths is new AAA.Strings.Set with null record
+     with Dynamic_Predicate => (for all P of Paths => P in Path);
    --  A bunch of paths, sorted alphabetically
 
-   function Exists (This : Path) return Boolean;
-   --  True if This designates some existing filesystem entity; False for
-   --  broken links.
+   type Parts is new AAA.Strings.Vector with null record;
+   --  All parts in a path (everything in between dir separators)
+
+   subtype Part is String with
+     Dynamic_Predicate => (for all Char of Part => Char /= Dir_Separator);
+
+   subtype Relative_Parts is String with Static_Predicate =>
+     Relative_Parts = Parent_Dir or else Relative_Parts = Current_Dir;
+
+   function Normalize (This : Path) return Path
+     with Post => Normalize'Result in Normal_Path;
+
+   function Ancestors (This : Path) return Paths;
+   --  Returns all ancestors of this path, without canonicalizing it first.
+   --  E.g.; /a/b/c/d => { /a, /a/b, /a/b/c }, b/c => { b }, z => {}
+
+   function Split (This : Path) return Parts
+     with Post =>
+       not Split'Result.Is_Empty
+       and then Is_Root (Split'Result.First_Element) = Is_Absolute (This);
+
+   type Kinds is
+     (Nothing,   -- A path pointing nowhere valid
+      Directory,
+      File,
+      Softlink,
+      Special);
+
+   subtype Existing_Kinds is Kinds range Kinds'Succ (Nothing) .. Kinds'Last;
+
+   subtype Final_Kinds is Kinds
+     with Static_Predicate => Final_Kinds /= Softlink;
+
+   function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds
+     with Post => (if Resolve_Links then Kind'Result in Final_Kinds);
+
+   function Target_Kind (This : Path) return Final_Kinds
+   is (Kind (This, Resolve_Links => True));
+
+   function Exists (This : Path; Resolve_Links : Boolean := False)
+                    return Boolean
+   is (Kind (This, Resolve_Links) in Existing_Kinds);
+
+   function Target_Exists (This : Path) return Boolean
+   is (Exists (This, Resolve_Links => True));
 
    function Is_Absolute (This : Path) return Boolean
                          renames GNAT.OS_Lib.Is_Absolute_Path;
 
-   function Is_Directory (This : Path) return Boolean
-     with Post => (if not Exists (This) then not Is_Directory'Result);
-   --  True for softlinks pointing to a directory
-
-   function Is_File (This : Path) return Boolean
-     with Post => (if not Exists (This) then not Is_File'Result);
+   function String_Is_Root (This : String) return Boolean;
+   --  Used to break recursion among predicates
 
    function Is_Root (This : Path) return Boolean;
    --  True if This denotes explicitly a root name ("/", "C:\")
 
-   function Is_Special (This : Path) return Boolean
-     with Post => (if not Exists (This) then not Is_Special'Result);
-
-   function Is_Softlink (This : Path) return Boolean;
-   --  Always false in platforms without softlink support. True even for broken
-   --  links.
-
    function Is_Broken (This : Path) return Boolean
-   is (Is_Softlink (This) and then not Exists (This));
+   is (Kind (This) = Softlink and then not Target_Exists (This));
    --  Note that this is false for a path that points to nothing
 
-   function Full_Path (This          : Path;
-                       Resolve_Links : Boolean := True)
-                       return Absolute_Path;
-   --  This will take care in case of broken
+   function Is_Recursive (This : Path) return Boolean
+     with Post => Kind (This) = Softlink or else Is_Recursive'Result = False;
+   --  Can only be True if this designates a softlink
 
-   function Name (This : Path) return Path
-     with Post => (for all Char of Name'Result => Char /= Dir_Separator);
+   function Canonical (This : Path) return Canonical_Path;
+   --  May raise Recursive_Softlink
+
+   function Full (This : Path) return Canonical_Path renames Canonical;
+
+   function Name (This : Path) return Part;
    --  Just the last component in the path
 
    function Has_Parent (This : Path) return Boolean
@@ -70,21 +131,26 @@ package Den is
 
    function Parent (This : Path) return Path
      with Pre => not Is_Root (This) and then Has_Parent (This);
-   --  Will not try to obtain absolute paths
+   --  Will not try to obtain absolute paths, nor canonalize nor do any
+   --  other processing. See Canonical_Parent for that.
+
+   function Canonical_Parent (This : Path) return Canonical_Path
+   is (Parent (Canonical (This)))
+     with Pre => not Is_Root (This);
 
    function Resolve (This : Path) return Path;
-   --  Identity for non-links, else change This for its target without
-   --  expanding the path. Note that the result might be a new soft link.
-   --  To obtain the canonical absolute path, use Full_Path.
+   --  Identity for non-links, else change This for its target without further
+   --  processing. Note that the result might be a new soft link. Intermediate
+   --  softlinks are not resolved either. Use with care, prefer Canonical.
 
    function Target_Length (This : Path) return Positive
-     with Pre => Is_Softlink (This);
+     with Pre => Kind (This) = Softlink;
    --  The length of a softlink target name. Not generally useful to clients
    --  but who knows...
 
    function Target (This : Path) return Path
      with Post =>
-       (if Is_Softlink (This)
+       (if Kind (This) = Softlink
           then Target'Result /= ""
         else
           Target'Result = This);
@@ -93,6 +159,8 @@ package Den is
    --  original path with the target replacing the softlink, use Resolve for
    --  that. The returned result is not normalized or resolved, use Full_Path
    --  for that.
+
+   VOY POR AQUÍ
 
    type Ls_Options is record
       Normalize_Paths       : Boolean := False;
@@ -188,6 +256,10 @@ package Den is
 
 private
 
-   dir_separator : constant Character := GNAT.OS_Lib.Directory_Separator;
+   Dir_Separator : constant Character := GNAT.OS_Lib.Directory_Separator;
+
+   function Is_Softlink (This : Path) return Boolean;
+   --  Always false in platforms without softlink support. True even for broken
+   --  links. False if This doesn't designate anything in the filesystem.
 
 end Den;

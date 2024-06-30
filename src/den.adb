@@ -51,11 +51,11 @@ package body Den is
    function Is_File (This : Path) return Boolean
    is (Dirs.Exists (This) and then Dirs.Kind (This) = Ordinary_File);
 
-   -------------
-   -- Is_Root --
-   -------------
+   --------------------
+   -- String_Is_Root --
+   --------------------
 
-   function Is_Root (This : Path) return Boolean is
+   function String_Is_Root (This : String) return Boolean is
       subtype Drive_Letter is Character with Dynamic_Predicate =>
         Drive_Letter in 'a' .. 'z' | 'A' .. 'Z';
    begin
@@ -74,7 +74,14 @@ package body Den is
                 (This'Length = 2
                  and then This (This'Last) = ':'
                  and then (This (This'First) in Drive_Letter))));
-   end Is_Root;
+   end String_Is_Root;
+
+   -------------
+   -- Is_Root --
+   -------------
+
+   function Is_Root (This : Path) return Boolean
+   is (String_Is_Root (This));
 
    ----------------
    -- Is_Special --

@@ -1,5 +1,5 @@
 name = "den"
-description = "Directory Enumeration Soft-link Aware"
+description = "Directory Enumeration Softlink Aware"
 version = "0.1.0-dev"
 
 authors = ["Alejandro R. Mosteo"]
