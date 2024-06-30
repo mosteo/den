@@ -6,26 +6,47 @@ with GNAT.OS_Lib;
 procedure Example is
    package OS renames GNAT.OS_Lib;
    use Den;
+
+   -------------
+   -- Explain --
+   -------------
+
+   function Explain (S : Path) return String
+   is (if Kind (S) = Softlink
+       then " --> " & Target (S) &
+         (if Is_Broken (S) then " (broken)" else "") &
+         (if Is_Recursive (S) then " (recursive)" else "")
+       elsif Kind (S) = Nothing
+       then " (not found)"
+       else "");
+
 begin
    Put_Line ("CURRENT DIR LS: " & Den.Current);
    for Path of Den.Ls (".") loop
       Put_Line (Path);
    end loop;
 
+   New_Line;
    Put_Line ("CASES (recursive):");
    for Item of Den.Find ("cases") loop
-      Put_Line (Item.Path);
+      Put_Line (Item.Path & Explain (Item.Path));
    end loop;
 
-   Put_Line ("CASES (normalized):");
+   New_Line;
+   Put_Line ("CASES (canonical):");
    for Item of Den.Find ("cases/",
-                         Options => (Normalize_Paths => True,
-                                     others          => <>))
+                         Options => (Canonicalize => True,
+                                     others       => <>))
    loop
-      Put_Line (Item.Path);
+      Put_Line (Item.Path & Explain (Item.Path));
    end loop;
 
+   New_Line;
+   Put_Line ("Canonicalize:");
    Put_Line (OS.Normalize_Pathname ("cases/links/f", Resolve_Links => False));
-   Put_Line (Full_Path ("cases/links/f", False));
-   Put_Line (Full_Path ("cases/links/f", True));
+   Put_Line (Canonical ("cases/links/f")
+             & Explain (Canonical ("cases/links/f")));
+
+   pragma Assert (Target ("cases/links/malformed") = "mal//formed");
+   pragma Assert (Scrub ("mal//formed") = "mal/formed");
 end Example;

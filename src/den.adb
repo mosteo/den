@@ -11,8 +11,6 @@ package body Den is
    package Dirs renames Ada.Directories;
    package OS renames GNAT.OS_Lib;
 
-   use all type Dirs.File_Kind;
-
    ---------------
    -- Operators --
    ---------------
@@ -30,26 +28,33 @@ package body Den is
 
    end Operators;
 
+   ---------------
+   -- Ancestors --
+   ---------------
+
+   function Ancestors (This : Normal_Path) return Sorted_Paths is
+      P : constant Path_Parts := Parts (This);
+      use Operators;
+   begin
+      return Result : Sorted_Paths do
+         for Part of P loop
+            if Result.Is_Empty then
+               Result.Insert (Part);
+            else
+               Result.Insert (Result.Last_Element / Part);
+            end if;
+         end loop;
+
+         Result.Delete_Last;
+      end return;
+   end Ancestors;
+
    ------------
    -- Exists --
    ------------
 
    function Exists (This : Path) return Boolean
    is (Dirs.Exists (This));
-
-   ------------------
-   -- Is_Directory --
-   ------------------
-
-   function Is_Directory (This : Path) return Boolean
-   is (Dirs.Exists (This) and then Dirs.Kind (This) = Directory);
-
-   -------------
-   -- Is_File --
-   -------------
-
-   function Is_File (This : Path) return Boolean
-   is (Dirs.Exists (This) and then Dirs.Kind (This) = Ordinary_File);
 
    --------------------
    -- String_Is_Root --
@@ -83,13 +88,6 @@ package body Den is
    function Is_Root (This : Path) return Boolean
    is (String_Is_Root (This));
 
-   ----------------
-   -- Is_Special --
-   ----------------
-
-   function Is_Special (This : Path) return Boolean
-   is (Dirs.Exists (This) and then Dirs.Kind (This) = Special_File);
-
    -----------------
    -- Is_Softlink --
    -----------------
@@ -98,33 +96,39 @@ package body Den is
    is (OS.Is_Symbolic_Link (This));
 
    ---------------
-   -- Full_Path --
+   -- Canonical --
    ---------------
 
-   function Full_Path (This          : Path;
-                       Resolve_Links : Boolean := True)
-                       return Absolute_Path
-   is
-      use Operators;
-   begin
-      if Is_Softlink (This) and then not Resolve_Links then
-         if Has_Parent (This) then
-            return
-              Parent (OS.Normalize_Pathname (This, Resolve_Links => False))
-                / Name (This);
-         else
-            return Current / This; -- ??? REVIEW
-         end if;
-      else
-         return OS.Normalize_Pathname (This, Resolve_Links => Resolve_Links);
-      end if;
-   end Full_Path;
+   function Canonical (This : Path) return Canonical_Path
+   is (if Is_Recursive (This)
+       then raise Recursive_Softlink with "Cannot canonicalize: " & This
+       else OS.Normalize_Pathname (This, Resolve_Links => True));
+
+   ----------
+   -- Kind --
+   ----------
+
+   function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds
+   is (if Resolve_Links then
+         (if Is_Recursive (This) then
+               Softlink
+          else
+             Kind (Canonical (This), Resolve_Links => False))
+       elsif Is_Softlink (This) then
+          Softlink
+       elsif not Dirs.Exists (This) then
+          Nothing
+       else
+         (case Dirs.Kind (This) is
+             when Dirs.Directory => Directory,
+             when Dirs.Ordinary_File => File,
+             when Dirs.Special_File  => Special));
 
    ----------
    -- Name --
    ----------
 
-   function Name (This : Path) return Path
+   function Name (This : Path) return Part
    is (Dirs.Simple_Name (This));
 
    ------------
@@ -133,6 +137,21 @@ package body Den is
 
    function Parent (This : Path) return Path
    is (Dirs.Containing_Directory (This));
+
+   -----------
+   -- Parts --
+   -----------
+
+   function Parts (This : Path) return Path_Parts is
+   begin
+      return Result : Path_Parts := AAA.Strings.Split (This, '/') do
+         --  Adjust the root if necessary
+         if Is_Absolute (This) then
+            Result (Result.First_Index) :=
+              Result (Result.First_Index) & Dir_Separator;
+         end if;
+      end return;
+   end Parts;
 
    -------------
    -- Resolve --
@@ -158,6 +177,26 @@ package body Den is
       end if;
    end Resolve;
 
+   ----------
+   -- Root --
+   ----------
+
+   function Root (This : Absolute_Path) return Root_Path is
+   begin
+      for I in This'Range loop
+         if This (I) = Dir_Separator then
+            return This (This'First .. I);
+         end if;
+      end loop;
+
+      raise Program_Error with "Cannot find root in abs path: " & This;
+   end Root;
+
+   function Is_Recursive (This : Path) return Boolean
+   is (if not Is_Softlink (This)
+       then False
+       else OS.Normalize_Pathname (This, Resolve_Links => True) = "");
+
    -------------------
    -- Target_Length --
    -------------------
@@ -173,7 +212,7 @@ package body Den is
    -- Target --
    ------------
 
-   function Target (This : Path) return Path
+   function Target (This : Path) return String
    is
       use C_Strings;
       use type C.int;
@@ -217,38 +256,38 @@ package body Den is
 
    function Ls (This    : Path;
                 Options : Ls_Options := (others => <>))
-                return Paths is
+                return Sorted_Paths is
 
       ------------
       -- Insert --
       ------------
 
-      procedure Insert (This : Path; Into : in out Paths) is
+      procedure Insert (This : Path; Into : in out Sorted_Paths) is
       begin
-         if Options.Normalize_Paths then
+         if Options.Canonicalize then
             Into.Include -- resolved links may point to the same file
               (OS.Normalize_Pathname
                  (This,
-                  Resolve_Links => Options.Resolve_Links));
+                  Resolve_Links => True));
          else
             Into.Insert (This);
          end if;
       end Insert;
 
    begin
-      return Result : Paths do
-         if not Exists (This) then
-            return;
-         end if;
+      return Result : Sorted_Paths do
+         case Kind (This) is
+            when Nothing =>
+               return;
 
-         if Is_Softlink (This) or else not Is_Directory (This) then
-            Insert (This, Into => Result);
-            return;
-         end if;
+            when Childless_Kinds =>
+               Insert (This, Into => Result);
 
-         for Item of Iterators.Iterate (This) loop
-            Insert (Item, Into => Result);
-         end loop;
+            when Directory =>
+               for Item of Iterators.Iterate (This) loop
+                  Insert (Item, Into => Result);
+               end loop;
+         end case;
       end return;
    end Ls;
 
@@ -280,20 +319,23 @@ package body Den is
                  Depth  => Depth);
       end New_Item;
 
+      subtype Dir_Path is String with Dynamic_Predicate =>
+        Dir_Path (Dir_Path'Last) = Dir_Separator;
+
       ----------
       -- Find --
       ----------
 
-      procedure Find (Parent : Path; Depth : Positive) is
+      procedure Find (Parent : Dir_Path; Depth : Positive) is
          Base : constant Path :=
-                  (if Options.Normalize_Paths
+                  (if Options.Canonicalize
                    then OS.Normalize_Pathname
                      (Parent,
-                      Resolve_Links => Options.Resolve_Links)
+                      Resolve_Links => True)
                     & OS.Directory_Separator
                    else Parent);
       begin
-         for Item of Ls (Parent, (Normalize_Paths => False, others => <>)) loop
+         for Item of Ls (Parent, (Canonicalize => False, others => <>)) loop
             if Stop then
                return;
             end if;
@@ -313,12 +355,12 @@ package body Den is
                   return;
                end if;
 
-               if Enter and then Is_Directory (Child) then
-                  if (Is_Softlink (Child)
-                      and then Options.Enter_Softlinked_Dirs)
+               if Enter then
+                  if (Options.Enter_Regular_Dirs
+                      and then Kind (Child) = Directory)
                     or else
-                      (not Is_Softlink (Child)
-                       and then Options.Enter_Regular_Dirs)
+                      (Options.Enter_Softlinked_Dirs
+                       and then Target_Kind (Child) = Directory)
                   then
                      Find (Child & OS.Directory_Separator, Depth + 1);
                   end if;
@@ -330,16 +372,12 @@ package body Den is
       end Find;
 
    begin
-      if not Exists (This) or else Is_Softlink (This) then
+      if Target_Kind (This) /= Directory then
          Action (New_Item (This, 0),
                  Enter => Enter,
                  Stop  => Stop);
-      elsif Is_Directory (This)
-        and then This (This'Last) /= OS.Directory_Separator
-      then
-         Find (This & OS.Directory_Separator, 1);
       else
-         Find (This, 1);
+         Find (This & OS.Directory_Separator, 1);
       end if;
    end Find;
 
@@ -381,5 +419,38 @@ package body Den is
 
    function Current return Path
    is (Dirs.Current_Directory);
+
+   -----------
+   -- Scrub --
+   -----------
+
+   function Scrub (This : String) return Path is
+   begin
+      if This = "" then
+         raise Bad_Path with "Bad path: (empty)";
+      end if;
+
+      if This (This'Last) = Dir_Separator then
+         return Scrub (This (This'First .. This'Last - 1));
+      end if;
+
+      for I in This'Range loop
+         if I < This'Last then
+            if This (I) = Dir_Separator and then This (I + 1) = Dir_Separator
+            then
+               return
+                 Scrub (This (This'First .. I) & This (I + 2 .. This'Last));
+            end if;
+         end if;
+      end loop;
+
+      if This in Path then
+         return This;
+      elsif This = "" then
+         raise Bad_Path with "Bad path: (empty)";
+      else
+         raise Bad_Path with "Bad path: " & This;
+      end if;
+   end Scrub;
 
 end Den;

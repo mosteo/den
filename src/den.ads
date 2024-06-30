@@ -6,6 +6,10 @@ with GNAT.OS_Lib;
 
 package Den is
 
+   Bad_Path : exception;
+   --  Raised when attempting to obtain a path from a plain string in some
+   --  conversions.
+
    Recursive_Softlink : exception;
    --  Raised for softlinks that point to themselves, directly or through
    --  several hops, and that hence cannot be resolved as a canonical path.
@@ -36,10 +40,12 @@ package Den is
        not GNAT.OS_Lib.Is_Absolute_Path (Relative_Path);
 
    subtype Normal_Path is Path with Dynamic_Predicate =>
-     (for all P of Split (Normal_Path) => P not in Relative_Parts);
+     (for all P of Path_Parts'(Parts (Normal_Path)) =>
+          P not in Relative_Parts);
 
    subtype Hard_Path is Path with Dynamic_Predicate =>
-     (for all A of Ancestors (Hard_Path) => Kind (A) /= Softlink);
+     (for all A of Ancestors (Canonical (Hard_Path)) =>
+          Kind (A) /= Softlink);
 
    subtype Canonical_Path is Path with Dynamic_Predicate =>
      Is_Absolute (Canonical_Path)
@@ -47,30 +53,39 @@ package Den is
      and then Canonical_Path in Normal_Path;
    --  The unique path if there are no hard links involved.
 
-   type Paths is new AAA.Strings.Set with null record
-     with Dynamic_Predicate => (for all P of Paths => P in Path);
+   subtype Root_Path is Path with Dynamic_Predicate =>
+     Root_Path (Root_Path'Last) = Dir_Separator;
+
+   subtype Sorted_Paths is AAA.Strings.Set
+     with Dynamic_Predicate =>
+       (for all P of Sorted_Paths => P in Path);
    --  A bunch of paths, sorted alphabetically
 
-   type Parts is new AAA.Strings.Vector with null record;
+   function Scrub (This : String) return Path;
+   --  Fix obvious problems like trailing '/' or duplicated "//" parts. May
+   --  raise Bad_Path if no good path remains after scrubbing.
+
+   subtype Path_Parts is AAA.Strings.Vector
+     with Dynamic_Predicate =>
+       (for all P of Path_Parts => P in Part);
    --  All parts in a path (everything in between dir separators)
 
    subtype Part is String with
-     Dynamic_Predicate => (for all Char of Part => Char /= Dir_Separator);
+     Dynamic_Predicate =>
+       (for all Char of Part => Char /= Dir_Separator)
+       or else Is_Root (Part);
 
-   subtype Relative_Parts is String with Static_Predicate =>
+   subtype Relative_Parts is Part with Dynamic_Predicate =>
      Relative_Parts = Parent_Dir or else Relative_Parts = Current_Dir;
 
-   function Normalize (This : Path) return Path
-     with Post => Normalize'Result in Normal_Path;
-
-   function Ancestors (This : Path) return Paths;
+   function Ancestors (This : Normal_Path) return Sorted_Paths;
    --  Returns all ancestors of this path, without canonicalizing it first.
-   --  E.g.; /a/b/c/d => { /a, /a/b, /a/b/c }, b/c => { b }, z => {}
+   --  E.g.; /a/b/c => { /, /a, /a/b }, a/b/c => { a, a/b }, z => {}
 
-   function Split (This : Path) return Parts
+   function Parts (This : Path) return Path_Parts
      with Post =>
-       not Split'Result.Is_Empty
-       and then Is_Root (Split'Result.First_Element) = Is_Absolute (This);
+       not Parts'Result.Is_Empty
+       and then Is_Root (Parts'Result.First_Element) = Is_Absolute (This);
 
    type Kinds is
      (Nothing,   -- A path pointing nowhere valid
@@ -83,6 +98,8 @@ package Den is
 
    subtype Final_Kinds is Kinds
      with Static_Predicate => Final_Kinds /= Softlink;
+
+   subtype Childless_Kinds is Kinds range File .. Special;
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds
      with Post => (if Resolve_Links then Kind'Result in Final_Kinds);
@@ -105,6 +122,8 @@ package Den is
 
    function Is_Root (This : Path) return Boolean;
    --  True if This denotes explicitly a root name ("/", "C:\")
+
+   function Root (This : Absolute_Path) return Root_Path;
 
    function Is_Broken (This : Path) return Boolean
    is (Kind (This) = Softlink and then not Target_Exists (This));
@@ -148,7 +167,7 @@ package Den is
    --  The length of a softlink target name. Not generally useful to clients
    --  but who knows...
 
-   function Target (This : Path) return Path
+   function Target (This : Path) return String
      with Post =>
        (if Kind (This) = Softlink
           then Target'Result /= ""
@@ -158,33 +177,26 @@ package Den is
    --  This returns the information proper stored in the softlink, not the
    --  original path with the target replacing the softlink, use Resolve for
    --  that. The returned result is not normalized or resolved, use Full_Path
-   --  for that.
-
-   VOY POR AQUÍ
+   --  for that. Note that the result may be not a proper path, e.g. something
+   --  like "mal//formed". Use Scrub to clean such things.
 
    type Ls_Options is record
-      Normalize_Paths       : Boolean := False;
-      Resolve_Links         : Boolean := False;
-   end record
-     with Dynamic_Predicate =>
-       (if Ls_Options.Resolve_Links then Ls_Options.Normalize_Paths);
+      Canonicalize : Boolean := False;
+   end record;
 
    function Ls (This    : Path;
                 Options : Ls_Options := (others => <>))
-                return Paths
+                return Sorted_Paths
      with Post =>
-       (case Exists (This) is
-          when False => Ls'Result.Is_Empty,
-          when True  =>
-              (if Is_Softlink (This) or else not Is_Directory (This)
-               then Ls'Result.Length in 1
-               else True));
-   --  Return immediate children of a directory, unless This is not one and
-   --  then the result is itself, if it exists. Won't include "." or "..".
+       (case Kind (This) is
+          when Nothing                   => Ls'Result.Is_Empty,
+          when Softlink | File | Special => Ls'Result.Length in 1,
+          when others                    => True);
+   --  Return immediate children of a directory. Won't include "." or ".."
 
    function Dir (This    : Path;
                  Options : Ls_Options := (others => <>))
-                 return Paths
+                 return Sorted_Paths
                  renames Ls;
 
    type Filters is interface;
@@ -212,18 +224,16 @@ package Den is
    type Find_Options is record
       Enter_Regular_Dirs    : Boolean := True;
       Enter_Softlinked_Dirs : Boolean := False;
-      Visit_Softlinks       : Boolean := True;
-      Normalize_Paths       : Boolean := False;
-      Resolve_Links         : Boolean := False;
-   end record
-     with Dynamic_Predicate =>
-       (if Find_Options.Resolve_Links then Find_Options.Normalize_Paths);
+      Visit_Softlinks       : Boolean := True; -- Whether Action will be called
+      Canonicalize          : Boolean := False;
+   end record;
 
    procedure Find
      (This    : Path;
       Action  : access procedure (This  : Item;
                                   Enter : in out Boolean;
                                   Stop  : in out Boolean);
+      --  Use action to prevent entering a particular dir, or to stop early.
       Options : Find_Options  := (others => <>);
       Filter  : Filters'Class := No_Filter'(null record));
    --  Will visit all children of This, or only This if not a directory, if it
