@@ -21,7 +21,7 @@ package body Den is
       -- "/" --
       ---------
 
-      function "/" (L, R : Path) return Path
+      function "/" (L : Path; R : Relative_Path) return Path
       is (if L (L'Last) = Dir_Separator
           then L & R
           else L & Dir_Separator & R);
@@ -149,11 +149,20 @@ package body Den is
 
    function Parts (This : Path) return Path_Parts is
    begin
-      return Result : Path_Parts := AAA.Strings.Split (This, '/') do
+      if Is_Root (This) then
+         return AAA.Strings.To_Vector (This);
+      end if;
+
+      return Result : Path_Parts := AAA.Strings.Split (This, Dir_Separator) do
          --  Adjust the root if necessary
          if Is_Absolute (This) then
-            Result (Result.First_Index) :=
-              Result (Result.First_Index) & Dir_Separator;
+            declare
+               Replacement : constant Part :=
+                               Result (Result.First_Index) & Dir_Separator;
+            begin
+               Result.Delete_First;
+               Result.Prepend (Replacement);
+            end;
          end if;
       end return;
    end Parts;
@@ -196,6 +205,10 @@ package body Den is
 
       raise Program_Error with "Cannot find root in abs path: " & This;
    end Root;
+
+   ------------------
+   -- Is_Recursive --
+   ------------------
 
    function Is_Recursive (This : Path) return Boolean
    is (if not Is_Softlink (This)
@@ -334,13 +347,16 @@ package body Den is
       ----------
 
       procedure Find (Parent : Dir_Path; Depth : Positive) is
-         Base : constant String :=
+         Base : constant Dir_Path :=
                   (if Options.Canonicalize /= None
-                   then Canonical_Or_Same (Parent)
+                   then Canonical_Or_Same
+                     (Parent (Parent'First .. Parent'Last - 1))
                     & OS.Directory_Separator
                    else Parent);
       begin
-         for Item of Ls (Parent, (Canonicalize => False)) loop
+         for Item of Ls (Parent (Parent'First .. Parent'Last - 1),
+                         (Canonicalize => False))
+         loop
             if Stop then
                return;
             end if;
@@ -450,6 +466,10 @@ package body Den is
    begin
       if This = "" then
          raise Bad_Path with "Bad path: (empty)";
+      end if;
+
+      if This in Root_Path then
+         return This;
       end if;
 
       if This (This'Last) = Dir_Separator then
