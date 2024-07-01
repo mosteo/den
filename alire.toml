@@ -17,3 +17,8 @@ c_strings = "^1.0.0"
 
 [[pins]]
 c_strings = { path='../c_strings' }
+
+[[actions]]
+type = "test"
+command = ["alr", "run"]
+directory = "selftest"

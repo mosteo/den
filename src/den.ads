@@ -35,17 +35,21 @@ package Den is
      with Dynamic_Predicate =>
        GNAT.OS_Lib.Is_Absolute_Path (Absolute_Path);
 
+   Driveless_Root : constant Absolute_Path;
+   --  The root of the filesystem in Unix-like (/), the current drive root (\)
+   --  on Windows without the actual drive (\).
+
    subtype Relative_Path is Path
      with Dynamic_Predicate =>
        not GNAT.OS_Lib.Is_Absolute_Path (Relative_Path);
 
    subtype Normal_Path is Path with Dynamic_Predicate =>
-     (for all P of Path_Parts'(Parts (Normal_Path)) =>
+     (for all P of Parts (Normal_Path) =>
           P not in Relative_Parts);
 
    subtype Hard_Path is Path with Dynamic_Predicate =>
-     (for all A of Ancestors (Canonical (Hard_Path)) =>
-          Kind (A) /= Softlink);
+     (for all A of Ancestors (Hard_Path) => Kind (A) /= Softlink)
+     and then Kind (Hard_Path) /= Softlink;
 
    subtype Canonical_Path is Path with Dynamic_Predicate =>
      Is_Absolute (Canonical_Path)
@@ -80,7 +84,7 @@ package Den is
 
    function Ancestors (This : Normal_Path) return Sorted_Paths;
    --  Returns all ancestors of this path, without canonicalizing it first.
-   --  E.g.; /a/b/c => { /, /a, /a/b }, a/b/c => { a, a/b }, z => {}
+   --  E.g.: /a/b/c => { /, /a, /a/b }, a/b/c => { a, a/b }, z => {}
 
    function Parts (This : Path) return Path_Parts
      with Post =>
@@ -101,8 +105,8 @@ package Den is
 
    subtype Childless_Kinds is Kinds range File .. Special;
 
-   function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds
-     with Post => (if Resolve_Links then Kind'Result in Final_Kinds);
+   function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds;
+   --  May return Softlink for a self-referential link!
 
    function Target_Kind (This : Path) return Final_Kinds
    is (Kind (This, Resolve_Links => True));
@@ -279,14 +283,15 @@ package Den is
 
    package Operators is
 
-      function "/" (L, R : Path) return Path
-        with Pre => R not in Absolute_Path;
+      function "/" (L : Path; R : Relative_Path) return Path;
 
    end Operators;
 
 private
 
    Dir_Separator : constant Character := GNAT.OS_Lib.Directory_Separator;
+
+   Driveless_Root : constant Absolute_Path := "" & Dir_Separator;
 
    function Is_Softlink (This : Path) return Boolean;
    --  Always false in platforms without softlink support. True even for broken
