@@ -49,13 +49,6 @@ package body Den is
       end return;
    end Ancestors;
 
-   ------------
-   -- Exists --
-   ------------
-
-   function Exists (This : Path) return Boolean
-   is (Dirs.Exists (This));
-
    --------------------
    -- String_Is_Root --
    --------------------
@@ -103,6 +96,18 @@ package body Den is
    is (if Is_Recursive (This)
        then raise Recursive_Softlink with "Cannot canonicalize: " & This
        else OS.Normalize_Pathname (This, Resolve_Links => True));
+
+   -----------------------
+   -- Canonical_Or_Same --
+   -----------------------
+
+   function Canonical_Or_Same (This : Path) return Path is
+   begin
+      return Canonical (This);
+   exception
+      when Recursive_Softlink =>
+         return This;
+   end Canonical_Or_Same;
 
    ----------
    -- Kind --
@@ -304,6 +309,8 @@ package body Den is
       Filter  : Filters'Class := No_Filter'(null record))
    is
 
+      Visited : Sorted_Paths; -- For deduping
+
       Enter : Boolean := True;
       Stop  : Boolean := False;
 
@@ -327,15 +334,13 @@ package body Den is
       ----------
 
       procedure Find (Parent : Dir_Path; Depth : Positive) is
-         Base : constant Path :=
-                  (if Options.Canonicalize
-                   then OS.Normalize_Pathname
-                     (Parent,
-                      Resolve_Links => True)
+         Base : constant String :=
+                  (if Options.Canonicalize /= None
+                   then Canonical_Or_Same (Parent)
                     & OS.Directory_Separator
                    else Parent);
       begin
-         for Item of Ls (Parent, (Canonicalize => False, others => <>)) loop
+         for Item of Ls (Parent, (Canonicalize => False)) loop
             if Stop then
                return;
             end if;
@@ -345,24 +350,41 @@ package body Den is
             end if;
 
             declare
-               Child : constant Path := Base & Item;
+               Child_Plain : constant Path := Base & Item;
+               Child : constant Path :=
+                         (case Options.Canonicalize is
+                             when None | Den.Base =>
+                               Base & Item,
+                             when All_With_Dupes | All_Deduped =>
+                               Canonical_Or_Same (Base & Item));
             begin
-               Action (This  => New_Item (Child, Depth),
-                       Enter => Enter,
-                       Stop  => Stop);
+               Enter := True;
+               Stop  := False;
 
-               if Stop then
-                  return;
+               if Options.Canonicalize /= All_Deduped or else
+                 not Visited.Contains (Child)
+               then
+                  Action (This  => New_Item (Child, Depth),
+                          Enter => Enter,
+                          Stop  => Stop);
+
+                  if Stop then
+                     return;
+                  end if;
+
+                  if Options.Canonicalize = All_Deduped then
+                     Visited.Insert (Child);
+                  end if;
                end if;
 
                if Enter then
                   if (Options.Enter_Regular_Dirs
-                      and then Kind (Child) = Directory)
+                      and then Kind (Child_Plain) = Directory)
                     or else
                       (Options.Enter_Softlinked_Dirs
-                       and then Target_Kind (Child) = Directory)
+                       and then Target_Kind (Child_Plain) = Directory)
                   then
-                     Find (Child & OS.Directory_Separator, Depth + 1);
+                     Find (Child_Plain & OS.Directory_Separator, Depth + 1);
                   end if;
                end if;
             end;

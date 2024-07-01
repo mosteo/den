@@ -1,6 +1,6 @@
 with AAA.Strings;
 
-with Ada.Containers.Indefinite_Ordered_Sets;
+with Ada.Containers.Indefinite_Ordered_Multisets;
 
 with GNAT.OS_Lib;
 
@@ -136,6 +136,12 @@ package Den is
    function Canonical (This : Path) return Canonical_Path;
    --  May raise Recursive_Softlink
 
+   function Canonical_Or_Same (This : Path) return Path with
+     Post =>
+       (Is_Recursive (This) and then Canonical_Or_Same'Result = This)
+        or else Canonical_Or_Same'Result in Canonical_Path;
+   --  Won't ever raise, but for uncanonizable paths it will return This
+
    function Full (This : Path) return Canonical_Path renames Canonical;
 
    function Name (This : Path) return Part;
@@ -221,11 +227,23 @@ package Den is
 
    function "<" (L, R : Item) return Boolean is (L.Path < R.Path);
 
+   type Canonical_Parts is
+     (None,    -- Do not canonicalize anything
+      Base,    -- Canonicalize the base directory of a path (all but the name)
+      All_With_Dupes, -- Canonicalize the full path, don't dedupe
+      All_Deduped     -- Canonicalize the full path, dedupe targets
+     );
+
    type Find_Options is record
       Enter_Regular_Dirs    : Boolean := True;
       Enter_Softlinked_Dirs : Boolean := False;
-      Visit_Softlinks       : Boolean := True; -- Whether Action will be called
-      Canonicalize          : Boolean := False;
+      --  Beware that loops may occur and the user should break them
+      Visit_Softlinks       : Boolean := True;
+      --  Whether Action will be called on softlinks
+      Canonicalize          : Canonical_Parts := None;
+      --  Note that Complete_Deduped requires storing all found canonical paths
+      --  to avoid revisiting them through several converging softlinks, so it
+      --  may take O(n) memory on the number of paths.
    end record;
 
    procedure Find
@@ -238,11 +256,12 @@ package Den is
       Filter  : Filters'Class := No_Filter'(null record));
    --  Will visit all children of This, or only This if not a directory, if it
    --  exists. If given a Filter, Action will be only called for those matching
-   --  it. The order of visiting is alphabetical. If Enter_Softlinked_Dirs,
-   --  beware that loops can occur. "." and ".." are never visited.
-   --  Complexity is O(n log n) due to the sorting of entries in a directory.
+   --  it. The order of visiting is alphabetical. "." and ".." are never
+   --  visited. Complexity is O(n log n) due to the sorting of entries in
+   --  a directory.
 
-   package Item_Sets is new Ada.Containers.Indefinite_Ordered_Sets (Item);
+   package Item_Sets is new Ada.Containers.Indefinite_Ordered_Multisets (Item);
+   --  Multiset as to preserve the semantics of All_With_Dupes
 
    subtype Items is Item_Sets.Set;
 
@@ -252,7 +271,8 @@ package Den is
       Filter  : Filters'Class := No_Filter'(null record))
       return Items;
    --  As the procedure version, but returns the paths that would be visited.
-   --  May take a long time without feedback...
+   --  May take a long time without feedback, and softlink dir loops will cause
+   --  infinite recursion.
 
    function Current return Path;
    function CWD return Path renames Current;

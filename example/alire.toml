@@ -11,6 +11,14 @@ tags = []
 
 executables = ["example"]
 
+[build-profiles]
+"*" = "validation"
+
+[build-switches]
+"*".contracts = "yes"
+"*".debug_info = "yes"
+"*".runtime_checks = "everything"
+
 [[depends-on]]
 den = "*"
 

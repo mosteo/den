@@ -26,23 +26,18 @@ begin
       Put_Line (Path);
    end loop;
 
-   New_Line;
-   Put_Line ("CASES (recursive):");
-   for Item of Den.Find ("cases") loop
-      Put_Line (Item.Path & Explain (Item.Path));
+   for Canon in Den.Canonical_Parts'Range loop
+      New_Line;
+      Put_Line ("CASES (" & Canon'Image & "):");
+      for Item of Den.Find ("cases",
+                            Options => (Canonicalize => Canon, others => <>))
+      loop
+         Put_Line (Item.Path & Explain (Item.Path));
+      end loop;
    end loop;
 
    New_Line;
-   Put_Line ("CASES (canonical):");
-   for Item of Den.Find ("cases/",
-                         Options => (Canonicalize => True,
-                                     others       => <>))
-   loop
-      Put_Line (Item.Path & Explain (Item.Path));
-   end loop;
-
-   New_Line;
-   Put_Line ("Canonicalize:");
+   Put_Line ("Canonicalize custom:");
    Put_Line (OS.Normalize_Pathname ("cases/links/f", Resolve_Links => False));
    Put_Line (Canonical ("cases/links/f")
              & Explain (Canonical ("cases/links/f")));
