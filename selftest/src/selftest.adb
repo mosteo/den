@@ -4,6 +4,7 @@ with Ada.Containers;
 --  with Ada.Directories;
 with Ada.Text_IO; use Ada.Text_IO;
 with Den; use Den;
+with Den.Iterators;
 
 --  with GNAT.OS_Lib;
 
@@ -247,5 +248,18 @@ begin
    end;
 
    Put_Line ("OK subprograms");
+
+   declare
+      Targets : constant String := "abc";
+      Seen : Sorted_Paths;
+   begin
+      for F of Iterators.Iterate ("test_iterator") loop
+         Seen.Insert (F);
+         pragma Assert (F'Length = 1 and then
+                        (for some Char of Targets => Char = F (F'First)));
+      end loop;
+      pragma Assert (Seen.Length = 3);
+   end;
+   Put_Line ("OK iterators");
 
 end Selftest;
