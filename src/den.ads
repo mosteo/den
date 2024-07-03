@@ -171,6 +171,9 @@ package Den is
    --  Identity for non-links, else change This for its target without further
    --  processing. Note that the result might be a new soft link. Intermediate
    --  softlinks are not resolved either. Use with care, prefer Canonical.
+   --  Note also that Scrub will be performed on Target (This), so use Target
+   --  for the raw contents of a softlink. May raise if the result is not a
+   --  well-formed Path even after scrubbing.
 
    function Target_Length (This : Path) return Positive
      with Pre => Kind (This) = Softlink;
@@ -219,6 +222,16 @@ package Den is
    overriding function Match (This : No_Filter;
                               Item : Path)
                               return Boolean is (True) with Inline;
+
+   type Kind_Is_Filter (Kind : Kinds) is new Filters with null record;
+
+   overriding function Match (This : Kind_Is_Filter;
+                              Item : Path)
+                              return Boolean is (Kind (Item) = This.Kind)
+     with Inline;
+
+   function Kind_Is (Kind : Kinds) return Kind_Is_Filter
+   is (Kind_Is_Filter'(Kind => Kind));
 
    subtype Depths is Natural;
 

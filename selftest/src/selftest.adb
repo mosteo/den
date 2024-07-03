@@ -25,14 +25,38 @@ procedure Selftest is
    --  package Dirs renames Ada.Directories;
    --  package OS renames GNAT.OS_Lib;
 begin
+
+   --  Ls
+   for Canon in Boolean'Range loop
+      for P of Ls (".", (Canonicalize => Canon)) loop
+         pragma Assert (Is_Absolute (P) = Canon);
+      end loop;
+   end loop;
+   Put_Line ("OK ls");
+
    --  Verify that enumeration of troublesome softlinks doesn't bomb.
    for Canon in Canonical_Parts'Range loop
+      --  Plain enumerating
       pragma Assert
         (Find
            (".." / "example" / "cases",
             Options => (Canonicalize => Canon, others => <>))
          .Length > 1);
+      --  Verify filtering
+      for K in Kinds'Range loop
+         for F of Find ("..",
+                        Options => (Canonicalize => Canon, others => <>),
+                        Filter  => Kind_Is (K))
+         loop
+            pragma Assert (Kind (F.Path) = K,
+                           "Expected: " & K'Image
+                           & "; got: " & Kind (F.Path)'Image
+                           & "; path: " & F.Path);
+         end loop;
+      end loop;
    end loop;
+   --  TODO: we should have some exact comparisons of output traversals with
+   --  all the Find options combinations. Lotsa work...
    Put_Line ("OK find");
 
    --  Verify some membership tests
@@ -126,10 +150,12 @@ begin
 
    --  Other Subprograms
 
+   --  Is_Broken
    pragma Assert (Is_Broken (+"../example/broken"));
    pragma Assert (not Is_Broken (+"../example"));
    pragma Assert (not Is_Broken ("unobtanium"));
 
+   --  Is_Recursive
    for Part of AAA.Strings.Sets.Set'(["self",
                                      "tic", "toc",
                                      "human", "centi", "pede"])
@@ -137,32 +163,89 @@ begin
       pragma Assert (Is_Recursive (Cases / "loops" / Part));
    end loop;
 
+   --  Canonical
    begin
       pragma Assert (Canonical (Cases / "loops" / "self") in Path); -- raises
       raise Program_Error with "Unexpected pass";
    exception
       when others => null;
    end;
+
+   --  Canonical_Or_Same
    pragma Assert (Kind (Canonical_Or_Same (Cases / "loops" / "self"))
                   = Softlink);
 
+   --  Name
    pragma Assert (Name ("a") = "a");
    pragma Assert (Name ("a" / "b") = "b");
    pragma Assert (Name (R / "a") = "a");
    pragma Assert (Name (R) = Driveless_Root);
    pragma Assert (Name (Root (CWD)) = Root (CWD));
 
+   --  Has_Parent
    pragma Assert (Has_Parent ("a" / "b"));
    pragma Assert (Has_Parent (R / "b"));
    pragma Assert (not Has_Parent (R));
    pragma Assert (not Has_Parent ("a"));
    pragma Assert (not Has_Parent (Root (CWD)));
 
+   --  Parent
    pragma Assert (Parent ("a" / "b") = "a");
    pragma Assert (Parent ("a" / "b" / "c") = "a" / "b");
    pragma Assert (Parent (R / "a") = R);
+   pragma Assert (Parent (CWD / "bin") = CWD);
 
-   POR AQUÍ VOY (Parent (CWD), Luego Canonical Parent)
+   --  Canonical_Parent
+   pragma Assert (Kind (Canonical_Parent (".") / "selftest") = Directory);
+   begin
+      pragma Assert (Kind (Parent (".")) = Directory, "must raise");
+      raise Program_Error with "Unexpected pass";
+   exception
+      when others => null;
+   end;
+   begin
+      pragma Assert (Kind (Parent (Root (CWD))) = Directory, "must raise");
+      raise Program_Error with "Unexpected pass";
+   exception
+      when others => null;
+   end;
+
+   --  Resolve
+   pragma Assert (Resolve (Cases / "links" / "b") = Cases / "links" / "a");
+   pragma Assert
+     (Resolve (Cases / "links" / "e") = Cases / "links" / "missing");
+   pragma Assert
+     (Resolve (Cases / "links" / "f") = Cases / "links" / "not" / "found");
+   pragma Assert
+     (Resolve (Cases / "links" / "malformed") =
+          Cases / "links" / "mal" / "formed");
+   pragma Assert (Resolve (Cases / "loops" / "tic") = Cases / "loops" / "toc");
+   pragma Assert (Resolve ("source") = "src");
+   pragma Assert (Resolve ("src") = "src");
+
+   --  Target & friends
+   pragma Assert (Target_Length ("source") = 3);
+   begin
+      pragma Assert (Target_Length ("src") = 3, "must raise");
+      raise Program_Error with "Unexpected pass";
+   exception
+      when others => null;
+   end;
+   pragma Assert (Target (Cases / "links" / "b") = "a");
+   pragma Assert
+     (Target (Cases / "links" / "malformed") = "mal//formed",
+      "Unexpected target: " & Target (Cases / "links" / "malformed"));
+
+   --  "/"
+   pragma Assert ("a" / "b" = +"a/b");
+   begin
+      if "a" / Canonical (".") /= "" then -- Should raise
+         raise Program_Error with "Unexpected pass";
+      end if;
+   exception
+      when others => null;
+   end;
 
    Put_Line ("OK subprograms");
+
 end Selftest;

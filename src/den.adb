@@ -176,7 +176,7 @@ package body Den is
    begin
       if Is_Softlink (This) then
          declare
-            Link_Target : constant Path := Target (This);
+            Link_Target : constant Path := Scrub (Target (This));
          begin
             if Is_Absolute (Link_Target) then
                return Link_Target;
@@ -223,6 +223,9 @@ package body Den is
       function Link_Len (Link : C_Strings.Chars_Ptr) return C_Strings.C.size_t
         with Import, Convention => C;
    begin
+      if not Is_Softlink (This) then
+         raise Constraint_Error with "Not a softlink: " & This;
+      end if;
       return Positive (Link_Len (C_Strings.To_C (This).To_Ptr));
    end Target_Length;
 
@@ -361,10 +364,6 @@ package body Den is
                return;
             end if;
 
-            if not Filter.Match (Item) then
-               goto Continue;
-            end if;
-
             declare
                Child_Plain : constant Path := Base & Item;
                Child : constant Path :=
@@ -380,6 +379,11 @@ package body Den is
                if Options.Canonicalize /= All_Deduped or else
                  not Visited.Contains (Child)
                then
+                  --  Match the fully resolved path
+                  if not Filter.Match (Child) then
+                     goto Continue;
+                  end if;
+
                   Action (This  => New_Item (Child, Depth),
                           Enter => Enter,
                           Stop  => Stop);
@@ -410,7 +414,7 @@ package body Den is
       end Find;
 
    begin
-      if Target_Kind (This) /= Directory then
+      if Target_Kind (This) /= Directory and then Filter.Match (This) then
          Action (New_Item (This, 0),
                  Enter => Enter,
                  Stop  => Stop);
