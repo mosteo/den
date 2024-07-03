@@ -9,17 +9,20 @@ jobs:
 
         strategy:
             matrix:
-                os: [ubuntu-latest, macos-latest, windows-latest]
-                v: [10, 11, 12, 13, 14]
+                os: [macos-12, windows-latest]
+                v: [^10, ^11, ^12, ^13, ^14, ""]
+                # Ensure latest version is always tested
 
         steps:
-            - name: Set up Alire
-              uses: alire-project/setup-alire@v1
-              with:
-                  toolchain: gnat_native^${{ matrix.v }} gprbuild
-
             - name: Checkout code
               uses: actions/checkout@v2
 
+            - name: Set up Alire
+              uses: alire-project/setup-alire@v3
+              with:
+                  toolchain: gnat_native${{ matrix.v }} gprbuild
+
             - name: Build and test
-              run: alr test
+              shell: bash
+              run: |
+                  alr test && cat alire/*.log || { cat alire/*.log; exit 1; }

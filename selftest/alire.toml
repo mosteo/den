@@ -14,9 +14,6 @@ executables = ["selftest"]
 [build-profiles]
 "*" = "validation"
 
-[build-switches]
-"*".ada_version = ["-gnat2022", "-gnatx"]
-
 [[depends-on]]
 den = "*"
 

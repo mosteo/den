@@ -43,13 +43,10 @@ package Den is
      with Dynamic_Predicate =>
        not GNAT.OS_Lib.Is_Absolute_Path (Relative_Path);
 
-   subtype Normal_Path is Path with Dynamic_Predicate =>
-     (for all P of Parts (Normal_Path) =>
-          P not in Relative_Parts);
+   subtype Normal_Path is Path with
+     Dynamic_Predicate => Is_Normal (Normal_Path);
 
-   subtype Hard_Path is Path with Dynamic_Predicate =>
-     (for all A of Ancestors (Hard_Path) => Kind (A) /= Softlink)
-     and then Kind (Hard_Path) /= Softlink;
+   subtype Hard_Path is Path with Dynamic_Predicate => Is_Hard (Hard_Path);
 
    subtype Canonical_Path is Normal_Path with Dynamic_Predicate =>
      Is_Absolute (Canonical_Path)
@@ -60,23 +57,27 @@ package Den is
      Root_Path (Root_Path'Last) = Dir_Separator;
 
    subtype Sorted_Paths is AAA.Strings.Set
-     with Dynamic_Predicate =>
-       (for all P of Sorted_Paths => P in Path);
+     with Dynamic_Predicate => Contains_Paths (Sorted_Paths);
    --  A bunch of paths, sorted alphabetically
+
+   function Contains_Paths (This : AAA.Strings.Set) return Boolean
+   is (for all P of This => P in Path);
 
    function Scrub (This : String) return Path;
    --  Fix obvious problems like trailing '/' or duplicated "//" parts. May
    --  raise Bad_Path if no good path remains after scrubbing.
 
    subtype Path_Parts is AAA.Strings.Vector
-     with Dynamic_Predicate =>
-       (for all P of Path_Parts => P in Part);
+     with Dynamic_Predicate => Contains_Parts (Path_Parts);
    --  All parts in a path (everything in between dir separators)
 
    subtype Part is String with
      Dynamic_Predicate =>
        (for all Char of Part => Char /= Dir_Separator)
-       or else Is_Root (Part);
+        or else Is_Root (Part);
+
+   function Contains_Parts (This : AAA.Strings.Vector) return Boolean
+   is (for all P of This => P in Part);
 
    subtype Relative_Parts is Part with Dynamic_Predicate =>
      Relative_Parts = Parent_Dir or else Relative_Parts = Current_Dir;
@@ -89,6 +90,9 @@ package Den is
      with Post =>
        not Parts'Result.Is_Empty
        and then Is_Root (Parts'Result.First_Element) = Is_Absolute (This);
+
+   function Is_Normal (This : Path) return Boolean
+   is (for all P of Parts (This) => P not in Relative_Parts);
 
    type Kinds is
      (Nothing,   -- A path pointing nowhere valid
@@ -109,6 +113,10 @@ package Den is
 
    function Target_Kind (This : Path) return Final_Kinds
    is (Kind (This, Resolve_Links => True));
+
+   function Is_Hard (This : Path) return Boolean
+   is ((for all A of Ancestors (This) => Kind (A) /= Softlink)
+       and then Kind (This) /= Softlink);
 
    function Exists (This : Path; Resolve_Links : Boolean := False)
                     return Boolean
@@ -219,8 +227,8 @@ package Den is
 
    type No_Filter is new Filters with null record;
 
-   overriding function Match (This : No_Filter;
-                              Item : Path)
+   overriding function Match (Unused_This : No_Filter;
+                              Unused_Item : Path)
                               return Boolean is (True) with Inline;
 
    type Kind_Is_Filter (Kind : Kinds) is new Filters with null record;
