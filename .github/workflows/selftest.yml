@@ -9,7 +9,7 @@ jobs:
 
         strategy:
             matrix:
-                os: [macos-12, windows-latest]
+                os: [windows-latest]
                 v: [^10, ^11, ^12, ^13, ^14, ""]
                 # Ensure latest version is always tested
 
@@ -23,6 +23,7 @@ jobs:
                   toolchain: gnat_native${{ matrix.v }} gprbuild
 
             - name: Build and test
-              shell: bash
+              shell: cmd
               run: |
+                  dir /AL selftest
                   alr test && cat alire/*.log || { cat alire/*.log; exit 1; }

@@ -2,7 +2,7 @@
 
 #if defined(_WIN32)
     #define readlink(a, b, c) -1
-    // Windows doesn't support soft links
+    // Windows doesn't support soft links (??? reparse points seem to be the same ???)
     #include <windows.h>
     #include <io.h>
 #elif defined(__APPLE__)
