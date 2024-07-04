@@ -21,7 +21,14 @@ procedure Example is
        else "");
 
 begin
-   Put_Line ("CURRENT DIR LS: " & Den.Current);
+   Put_Line ("CWD: " & Den.Current);
+   Put_Line (Kind ("there")'Image);
+
+   if True then
+      return;
+   end if;
+
+   Put_Line ("LS: " & Den.Current);
    for Path of Den.Ls (".") loop
       Put_Line (Path);
    end loop;
@@ -43,4 +50,6 @@ begin
              & Explain (Canonical ("cases/links/f")));
 
    Put_Line (Kind ("there")'Image);
+   Put_Line (Target_Length ("there")'Image);
+   Put_Line (Target ("there"));
 end Example;

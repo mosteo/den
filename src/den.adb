@@ -8,8 +8,11 @@ with Den.Iterators;
 
 package body Den is
 
+   package C renames C_Strings.C;
    package Dirs renames Ada.Directories;
    package OS renames GNAT.OS_Lib;
+
+   function OS_Canonical (This : Path) return String;
 
    ---------------
    -- Operators --
@@ -99,9 +102,9 @@ package body Den is
    ---------------
 
    function Canonical (This : Path) return Canonical_Path
-   is (if Is_Recursive (This)
+   is (if OS_Canonical (This) = ""
        then raise Recursive_Softlink with "Cannot canonicalize: " & This
-       else OS.Normalize_Pathname (This, Resolve_Links => True));
+       else OS_Canonical (This));
 
    -----------------------
    -- Canonical_Or_Same --
@@ -109,10 +112,11 @@ package body Den is
 
    function Canonical_Or_Same (This : Path) return Path is
    begin
-      return Canonical (This);
-   exception
-      when Recursive_Softlink =>
+      if OS_Canonical (This) = "" then
          return This;
+      else
+         return OS_Canonical (This);
+      end if;
    end Canonical_Or_Same;
 
    ----------
@@ -212,6 +216,47 @@ package body Den is
       raise Program_Error with "Cannot find root in abs path: " & This;
    end Root;
 
+   -------------------
+   -- Canonical_Raw --
+   -------------------
+   --  Use OS-specific ways of obtaining a canonical path, resolving softlinks
+   --  if possible. In case of error (broken, recursive links?), it will return
+   --  "".
+   function OS_Canonical (This : Path) return String is
+      function Canonical_C (Target, Buffer : C_Strings.Chars_Ptr;
+                            Bufsiz         : C.size_t)
+                            return C.int
+        with Import, Convention => C;
+
+      use type C_Strings.C.int;
+      Bufsize : Integer := 32768; -- Theoretically, this is Windows max
+   begin
+      loop
+         declare
+            Cbuf : C_Strings.C_String := C_Strings.Buffer (Bufsize);
+         begin
+            case Canonical_C (C_Strings.To_C (This).To_Ptr,
+                              Cbuf.To_Ptr,
+                              Cbuf.C_Size)
+            is
+               when 0 =>
+                  return Cbuf.To_Ada;
+               when -1 =>
+                  if Integer'Last / 2 < Bufsize then
+                     return "";
+                  else
+                     Bufsize := Bufsize * 2;
+                  end if;
+                  --  And try again
+               when 1 .. C.int'Last =>
+                  return "";
+               when others =>
+                  raise Program_Error;
+            end case;
+         end;
+      end loop;
+   end OS_Canonical;
+
    ------------------
    -- Is_Recursive --
    ------------------
@@ -219,7 +264,7 @@ package body Den is
    function Is_Recursive (This : Path) return Boolean
    is (if not Is_Softlink (This)
        then False
-       else OS.Normalize_Pathname (This, Resolve_Links => True) = "");
+       else OS_Canonical (This) = "");
 
    -------------------
    -- Target_Length --
@@ -293,9 +338,7 @@ package body Den is
       begin
          if Options.Canonicalize then
             Into.Include -- resolved links may point to the same file
-              (OS.Normalize_Pathname
-                 (This,
-                  Resolve_Links => True));
+              (OS_Canonical (This));
          else
             Into.Insert (This);
          end if;

@@ -28,9 +28,14 @@ procedure Selftest is
 
    Timed_Out : Boolean := True;
 
-   --  Adjust some checks depending
-   Supported : constant Boolean := Dir_Separator = '/';
+   --  Adjust some checks depending on whether git checkout created softlinks
+   --  or not. Windows does support softlinks on NTFS at least, and on GH
+   --  runners they're created. In my Windows machine they aren't, no idea why
+   Supported : constant Boolean := Kind ("source") = Softlink;
+   --  This is a link to "src"
 begin
+   Put_Line ("Testing with Supported = " & Supported'Image);
+
    select
       delay 33.33;
 
