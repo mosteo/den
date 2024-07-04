@@ -1,11 +1,6 @@
 //  The purpose of this file is to be able to use readlink portably
 
-#if defined(_WIN32)
-    #define readlink(a, b, c) -1
-    // Windows doesn't support soft links (??? reparse points seem to be the same ???)
-    #include <windows.h>
-    #include <io.h>
-#elif defined(__APPLE__)
+#if defined(__APPLE__)
     #include <sys/syslimits.h>
     #include <sys/stat.h>
     #include <unistd.h>
@@ -25,9 +20,6 @@
 #endif
 
 ssize_t link_len(const char *path) {
-#ifdef _WIN32
-    return -1;
-#else
     struct stat sb;
 
     if (lstat(path, &sb) == -1)
@@ -37,7 +29,6 @@ ssize_t link_len(const char *path) {
        as zero. In that case, take PATH_MAX as a "good enough" estimate. */
 
     return (sb.st_size == 0) ? PATH_MAX : sb.st_size;
-#endif
 }
 
 int link_target(const char *path, char *buf, ssize_t bufsiz) {

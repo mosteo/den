@@ -23,7 +23,6 @@ jobs:
                   toolchain: gnat_native${{ matrix.v }} gprbuild
 
             - name: Build and test
-              shell: cmd
+              shell: bash
               run: |
-                  dir /AL selftest
                   alr test && cat alire/*.log || { cat alire/*.log; exit 1; }
