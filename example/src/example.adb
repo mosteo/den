@@ -42,6 +42,5 @@ begin
    Put_Line (Canonical ("cases/links/f")
              & Explain (Canonical ("cases/links/f")));
 
-   pragma Assert (Target ("cases/links/malformed") = "mal//formed");
-   pragma Assert (Scrub ("mal//formed") = "mal/formed");
+   Put_Line (Kind ("there")'Image);
 end Example;

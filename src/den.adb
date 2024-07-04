@@ -86,7 +86,13 @@ package body Den is
    -----------------
 
    function Is_Softlink (This : Path) return Boolean
-   is (OS.Is_Symbolic_Link (This));
+   is
+      function Is_Softlink_C (Link : C_Strings.Chars_Ptr)
+                              return C_Strings.C.int
+        with Import, Convention => C;
+   begin
+      return Is_Softlink_C (C_Strings.To_C (This).To_Ptr) not in 0;
+   end Is_Softlink;
 
    ---------------
    -- Canonical --
@@ -125,7 +131,7 @@ package body Den is
           Nothing
        else
          (case Dirs.Kind (This) is
-             when Dirs.Directory => Directory,
+             when Dirs.Directory     => Directory,
              when Dirs.Ordinary_File => File,
              when Dirs.Special_File  => Special));
 
