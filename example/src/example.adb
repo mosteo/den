@@ -23,8 +23,10 @@ procedure Example is
 begin
    Put_Line ("CWD: " & Den.Current);
    Put_Line (Kind ("there")'Image);
+   Put_Line (Canonical ("there"));
 
    if True then
+      Put_Line ("DONE");
       return;
    end if;
 

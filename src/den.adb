@@ -90,11 +90,11 @@ package body Den is
 
    function Is_Softlink (This : Path) return Boolean
    is
-      function Is_Softlink_C (Link : C_Strings.Chars_Ptr)
+      function C_Is_Softlink (Link : C_Strings.Chars_Ptr)
                               return C_Strings.C.int
         with Import, Convention => C;
    begin
-      return Is_Softlink_C (C_Strings.To_C (This).To_Ptr) not in 0;
+      return C_Is_Softlink (C_Strings.To_C (This).To_Ptr) not in 0;
    end Is_Softlink;
 
    ---------------
@@ -102,7 +102,8 @@ package body Den is
    ---------------
 
    function Canonical (This : Path) return Canonical_Path
-   is (if OS_Canonical (This) = ""
+   is (if OS_Canonical (This) = "" or else
+          OS_Canonical (This) not in Canonical_Path
        then raise Recursive_Softlink with "Cannot canonicalize: " & This
        else OS_Canonical (This));
 
@@ -223,7 +224,7 @@ package body Den is
    --  if possible. In case of error (broken, recursive links?), it will return
    --  "".
    function OS_Canonical (This : Path) return String is
-      function Canonical_C (Target, Buffer : C_Strings.Chars_Ptr;
+      function C_Canonical (Target, Buffer : C_Strings.Chars_Ptr;
                             Bufsiz         : C.size_t)
                             return C.int
         with Import, Convention => C;
@@ -235,7 +236,7 @@ package body Den is
          declare
             Cbuf : C_Strings.C_String := C_Strings.Buffer (Bufsize);
          begin
-            case Canonical_C (C_Strings.To_C (This).To_Ptr,
+            case C_Canonical (C_Strings.To_C (This).To_Ptr,
                               Cbuf.To_Ptr,
                               Cbuf.C_Size)
             is
@@ -271,13 +272,14 @@ package body Den is
    -------------------
 
    function Target_Length (This : Path) return Positive is
-      function Link_Len (Link : C_Strings.Chars_Ptr) return C_Strings.C.size_t
+      function C_Link_Len (Link : C_Strings.Chars_Ptr)
+                           return C_Strings.C.size_t
         with Import, Convention => C;
    begin
       if not Is_Softlink (This) then
          raise Constraint_Error with "Not a softlink: " & This;
       end if;
-      return Positive (Link_Len (C_Strings.To_C (This).To_Ptr));
+      return Positive (C_Link_Len (C_Strings.To_C (This).To_Ptr));
    end Target_Length;
 
    ------------
@@ -289,9 +291,9 @@ package body Den is
       use C_Strings;
       use type C.int;
 
-      function Link_Target (This, Buffer : Chars_Ptr;
-                            Buffer_Length : C.size_t)
-                            return C.int
+      function C_Link_Target (This, Buffer : Chars_Ptr;
+                              Buffer_Length : C.size_t)
+                              return C.int
         with Import, Convention => C;
    begin
       if Is_Softlink (This) then
@@ -301,9 +303,9 @@ package body Den is
             declare
                Cbuf : C_String := C_Strings.Buffer (Target_Length (This) + 1);
                Code : constant C.int
-                 := Link_Target (To_C (This).To_Ptr,
-                                 Cbuf.To_Ptr,
-                                 Cbuf.C_Size);
+                 := C_Link_Target (To_C (This).To_Ptr,
+                                   Cbuf.To_Ptr,
+                                   Cbuf.C_Size);
             begin
                case Code is
                   when 0 =>
