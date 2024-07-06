@@ -10,9 +10,8 @@ package Den is
    --  Raised when attempting to obtain a path from a plain string in some
    --  conversions.
 
-   Recursive_Softlink : exception;
-   --  Raised for softlinks that point to themselves, directly or through
-   --  several hops, and that hence cannot be resolved as a canonical path.
+   Unresolvable_Softlink : exception;
+   --  Raised by functions that require a valid target at some point
 
    Dir_Separator : constant Character;
 
@@ -82,6 +81,9 @@ package Den is
    subtype Relative_Parts is Part with Dynamic_Predicate =>
      Relative_Parts = Parent_Dir or else Relative_Parts = Current_Dir;
 
+   function Absolute (This : Path) return Absolute_Path with
+     Post => (if Is_Absolute (This) then Absolute'Result = This);
+
    function Ancestors (This : Normal_Path) return Sorted_Paths;
    --  Returns all ancestors of this path, without canonicalizing it first.
    --  E.g.: /a/b/c => { /, /a, /a/b }, a/b/c => { a, a/b }, z => {}
@@ -93,6 +95,11 @@ package Den is
 
    function Is_Normal (This : Path) return Boolean
    is (for all P of Parts (This) => P not in Relative_Parts);
+
+   function Normal (This : Path) return Normal_Path;
+   --  Remove ".", ".." from path, but without first making it absolute, so it
+   --  may raise even for valid relative paths. Use Normal (Absolute (This)) in
+   --  such cases.
 
    type Kinds is
      (Nothing,   -- A path pointing nowhere valid
@@ -136,22 +143,37 @@ package Den is
 
    function Root (This : Absolute_Path) return Root_Path;
 
+   function Resolve (This : Path) return Path;
+   --  Identity for non-links, else change This for its target without further
+   --  processing. Note that the result might be a new soft link. Intermediate
+   --  softlinks are not resolved either. Use with care, prefer Canonical.
+   --  Note also that Scrub will be performed on Target (This), so use Target
+   --  for the raw contents of a softlink. May raise if the result is not a
+   --  well-formed Path even after scrubbing.
+
    function Is_Broken (This : Path) return Boolean
-   is (Kind (This) = Softlink and then not Target_Exists (This));
+   is (Kind (This) = Softlink and then not Exists (Resolve (This)));
    --  Note that this is false for a path that points to nothing
 
    function Is_Recursive (This : Path) return Boolean
      with Post => Kind (This) = Softlink or else Is_Recursive'Result = False;
    --  Can only be True if this designates a softlink
 
-   function Canonical (This : Path) return Canonical_Path;
-   --  May raise Recursive_Softlink
+   function Is_Resolvable (This : Path) return Boolean
+   is (Kind (This) /= Nothing and then
+      (Kind (This) /= Softlink or else
+         not (Is_Broken (This) or else Is_Recursive (This))));
 
-   function Canonical_Or_Same (This : Path) return Path with
-     Post =>
-       (Is_Recursive (This) and then Canonical_Or_Same'Result = This)
-        or else Canonical_Or_Same'Result in Canonical_Path;
-   --  Won't ever raise, but for uncanonizable paths it will return This
+   function Canonical (This : Path) return Canonical_Path;
+   --  May raise Unresolvable_Softlink, as the resulting path must not contain
+   --  soft links. Note though, that for Kind (This) = Nothing, this can
+   --  be made canonical but will point to a non-existent item. Check out
+   --  Semicanonical.
+
+   function Semicanonical (This : Path) return String;
+   --  For broken links, the path will be canonical up to that point, with the
+   --  link target appended. For recursive links, the path will be canonical
+   --  and the simple name will remain the same. Should never raise.
 
    function Full (This : Path) return Canonical_Path renames Canonical;
 
@@ -174,14 +196,6 @@ package Den is
    function Canonical_Parent (This : Path) return Canonical_Path
    is (Parent (Canonical (This)))
      with Pre => not Is_Root (This);
-
-   function Resolve (This : Path) return Path;
-   --  Identity for non-links, else change This for its target without further
-   --  processing. Note that the result might be a new soft link. Intermediate
-   --  softlinks are not resolved either. Use with care, prefer Canonical.
-   --  Note also that Scrub will be performed on Target (This), so use Target
-   --  for the raw contents of a softlink. May raise if the result is not a
-   --  well-formed Path even after scrubbing.
 
    function Target_Length (This : Path) return Positive
      with Pre => Kind (This) = Softlink;

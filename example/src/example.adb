@@ -12,27 +12,20 @@ procedure Example is
    -------------
 
    function Explain (S : Path) return String
-   is (if Kind (S) = Softlink
-       then " --> " & Target (S) &
-         (if Is_Broken (S) then " (broken)" else "") &
-         (if Is_Recursive (S) then " (recursive)" else "")
-       elsif Kind (S) = Nothing
-       then " (not found)"
-       else "");
+   is (case Kind (S) is
+          when Special  => " (special)",
+          when Softlink =>
+             " --> " & Target (S) &
+             (if Is_Broken (S) then " (broken)" else "") &
+             (if Is_Recursive (S) then " (recursive)" else ""),
+          when Nothing   => " (not found)",
+          when Directory => "" & Dir_Separator,
+          when File      => "");
 
 begin
-   Put_Line ("CWD: " & Den.Current);
-   Put_Line (Kind ("there")'Image);
-   Put_Line (Canonical ("there"));
-
-   if True then
-      Put_Line ("DONE");
-      return;
-   end if;
-
    Put_Line ("LS: " & Den.Current);
    for Path of Den.Ls (".") loop
-      Put_Line (Path);
+      Put_Line (Path & Explain (Path));
    end loop;
 
    for Canon in Den.Canonical_Parts'Range loop

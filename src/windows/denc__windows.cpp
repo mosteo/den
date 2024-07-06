@@ -50,29 +50,43 @@ std::wstring char_to_wstring(const char* cstr) {
     return std::wstring(buffer.data());
 }
 
-//  Resolve a link or ""
-std::string resolve_link(const char * path, size_t bufsiz) {
+//  Returns 0 for success, -1 for not enough buffer, >=1 for non-recoverable error
+int resolve_link(const char * path, std::string &full, size_t bufsiz) {
     // Using the Windows API, get the softlink target
 
     // initialize a std::string of bufsiz length
     std::string buffer(bufsiz, '\0');
-    DWORD dwRes = GetFinalPathNameByHandle(
-        CreateFileA(
+
+    // Obtain the file handle
+    HANDLE hFile = CreateFileA(
             path,
-            GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL),
-        buffer.data(), MAX_PATH, VOLUME_NAME_DOS);
+            GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+
+    if (hFile == INVALID_HANDLE_VALUE) {
+        return 1;
+    }
+
+    // Returns buffer used or needed, or 0 for error
+    DWORD dwRes = GetFinalPathNameByHandle(
+        hFile,
+        buffer.data(), bufsiz, VOLUME_NAME_DOS);
+
+    // Close the file handle, no longer needed
+    CloseHandle(hFile);
+
     if (dwRes == 0) {
-        std::cerr << "Error resolving link: " << GetLastError()
-        << " for path: " << path << std::endl;
-        return "";
+        // Links is broken or recursive
+        return 1;
+    } else if (dwRes > bufsiz) {
+        // Not enough buffer
+        return -1;
     } else {
         // Remove any stupid \\?\ prefix
         if (buffer.size() >= 4 && buffer.substr(0, 4) == "\\\\?\\") {
             buffer = buffer.substr(4);
         }
-
-        std::cout << "Resolved link: " << buffer << std::endl;
-        return buffer;
+        full = buffer;
+        return 0;
     }
 }
 
@@ -82,18 +96,20 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
         // If the path is a non-broken soft-link, fully resolve it and return
         // the target canonical path.
         if (c_is_softlink(inputPath)) {
-            std::string resolved = resolve_link(inputPath, bufsiz);
-            if (resolved != "") {
-                if (resolved.size() >= bufsiz) {
-                    return -1;
-                }
+            std::string resolved;
+            const int code = resolve_link(inputPath, resolved, bufsiz);
+            if (code == 0) {
                 std::copy(resolved.begin(), resolved.end(), fullPath);
                 fullPath[resolved.size()] = '\0'; // Fscking low-level garbage
                 return 0;
+            } else if (code == -1) {
+                return -1;
+            } else if (code > 0) {
+              return 1;
             }
         }
 
-        //  From here on, we are dealing with a broken link or regular path
+        //  From here on, we are dealing with a regular path
 
         std::string path = fs::weakly_canonical(inputPath).string();
         if (path.size() >= bufsiz - 1) {
@@ -103,7 +119,7 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
         std::copy(path.begin(), path.end(), fullPath);
         fullPath[path.size()] = '\0'; // Fscking low-level garbage
         // print debug obtained string
-        std::cout << "Canonical path: " << fullPath << std::endl;
+        // std::cout << "Canonical path: " << fullPath << std::endl;
         return 0;
     } catch (const std::exception& e) {
         std::cerr << "Error getting canonical path: " << e.what() << std::endl;
@@ -114,14 +130,28 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
 extern "C" int c_is_softlink(const char *path) {
     // fs::is_symlink, which would be ideal, is lying for some reason
 
-    DWORD attributes = GetFileAttributesW(char_to_wstring(path).c_str());
-    if (attributes == INVALID_FILE_ATTRIBUTES) {
-        std::cerr << "Error getting file attributes: " << GetLastError() << std::endl;
-        return false;
-    }
-    return (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+    HANDLE hFile;
+    DWORD dwRetLen;
+    BYTE reparseBuffer[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
+    PREPARSE_DATA_BUFFER reparseData = (PREPARSE_DATA_BUFFER)reparseBuffer;
 
-    return fs::is_symlink(path);
+    hFile = CreateFileA(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                        NULL, OPEN_EXISTING,
+                        FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+
+    if (hFile == INVALID_HANDLE_VALUE) {
+        return 0;
+    }
+
+    if (!DeviceIoControl(hFile, FSCTL_GET_REPARSE_POINT, NULL, 0, reparseBuffer,
+                         MAXIMUM_REPARSE_DATA_BUFFER_SIZE, &dwRetLen, NULL)) {
+        CloseHandle(hFile);
+        return 0;
+    }
+
+    CloseHandle(hFile);
+
+    return reparseData->ReparseTag == IO_REPARSE_TAG_SYMLINK ? 1 : 0;
 }
 
 
@@ -132,7 +162,7 @@ extern "C" int c_link_len(const char *path) {
     BYTE reparseBuffer[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
     PREPARSE_DATA_BUFFER reparseData = (PREPARSE_DATA_BUFFER)reparseBuffer;
 
-    hFile = CreateFileW(char_to_wstring(path).c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+    hFile = CreateFileA(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                         NULL, OPEN_EXISTING,
                         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
 
@@ -164,7 +194,7 @@ extern "C" int c_link_target(const char *path, char *buf, size_t bufsiz) {
     BYTE reparseBuffer[MAXIMUM_REPARSE_DATA_BUFFER_SIZE];
     PREPARSE_DATA_BUFFER reparseData = (PREPARSE_DATA_BUFFER)reparseBuffer;
 
-    hFile = CreateFileW(char_to_wstring(path).c_str(), 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+    hFile = CreateFileA(path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                         NULL, OPEN_EXISTING,
                         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
 

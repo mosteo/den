@@ -31,13 +31,28 @@ package body Den is
 
    end Operators;
 
+   ---------
+   -- "/" --
+   ---------
+
+   function "/" (L : Path; R : Relative_Path) return Path
+                 renames Operators."/";
+
+   --------------
+   -- Absolute --
+   --------------
+
+   function Absolute (This : Path) return Absolute_Path
+   is (if Is_Absolute (This)
+       then This
+       else Current / This);
+
    ---------------
    -- Ancestors --
    ---------------
 
    function Ancestors (This : Normal_Path) return Sorted_Paths is
       P : constant Path_Parts := Parts (This);
-      use Operators;
    begin
       return Result : Sorted_Paths do
          for Part of P loop
@@ -104,21 +119,69 @@ package body Den is
    function Canonical (This : Path) return Canonical_Path
    is (if OS_Canonical (This) = "" or else
           OS_Canonical (This) not in Canonical_Path
-       then raise Recursive_Softlink with "Cannot canonicalize: " & This
+       then raise Unresolvable_Softlink with "Cannot canonicalize: " & This
        else OS_Canonical (This));
 
-   -----------------------
-   -- Canonical_Or_Same --
-   -----------------------
+   -------------------
+   -- Semicanonical --
+   -------------------
 
-   function Canonical_Or_Same (This : Path) return Path is
+   function Semicanonical (This : Path) return String
+   is
+      Parted : Path_Parts := Parts (Absolute (This));
+      I : Integer := Parted.First_Index;
    begin
-      if OS_Canonical (This) = "" then
-         return This;
-      else
-         return OS_Canonical (This);
-      end if;
-   end Canonical_Or_Same;
+      while I <= Parted.Last_Index loop
+         if Parted (I) = "." then
+            Parted.Delete (I);
+         elsif Parted (I) = ".." then
+            Parted.Delete (I);
+            if I = Parted.First_Index then
+               raise Ada.Directories.Use_Error
+               with "Cannot remove parent when canonicalizing: " & This;
+            else
+               Parted.Delete (I - 1);
+               I := I - 1;
+            end if;
+         else
+            --  TAKE UP TO I, CHECK if ITS SOFTLINK and do WHATEVER
+            declare
+               Head : constant Absolute_Path := Up_To (I, Parted);
+               Tail : constant Relative_Path := From (I + 1, Parted);
+            begin
+               --  At this point, Head is absnormal, though may be a softlink
+               if Is_Softlink (Head) then
+                  if Is_Broken (Head) then
+                     Parted := Parts (Head) & Parts (Target (Head)) & Parts (Tail);
+                  elsif Is_Recursive (Head) then
+                     --  Leave as is plus tail
+                  else
+                     --  substitute target plus tail
+                  end if;
+               else
+                  --  Just move on to the next bit
+                  I := I + 1;
+               end if;
+            end;
+         end if;
+      end loop;
+
+      return Parted.Flatten (Dir_Separator);
+   end Semicanonical;
+
+     --  (if Kind (This) /= Softlink or else Is_Resolvable (This) then
+     --       Canonical (This)
+     --    elsif not Is_Absolute (This) then
+     --       Semicanonical (Current / This)
+     --    elsif Is_Broken (This) then
+     --      (if Has_Parent (This) then
+     --            Semicanonical (Parent (This) / Target (This))
+     --       else
+     --          This)
+     --    elsif Is_Recursive (This) then
+     --       This
+     --    else
+     --       raise Program_Error with "Should be unreachable: " & This);
 
    ----------
    -- Kind --
@@ -126,7 +189,7 @@ package body Den is
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds
    is (if Resolve_Links then
-         (if Is_Recursive (This) then
+         (if not Is_Resolvable (This) then
                Softlink
           else
              Kind (Canonical (This), Resolve_Links => False))
@@ -183,7 +246,6 @@ package body Den is
    -------------
 
    function Resolve (This : Path) return Path is
-      use Operators;
    begin
       if Is_Softlink (This) then
          declare
@@ -216,6 +278,34 @@ package body Den is
 
       raise Program_Error with "Cannot find root in abs path: " & This;
    end Root;
+
+   ------------
+   -- Normal --
+   ------------
+
+   function Normal (This : Path) return Normal_Path is
+      Parted : Path_Parts := Parts (This);
+      I : Integer := Parted.First_Index;
+   begin
+      while I <= Parted.Last_Index loop
+         if Parted (I) = "." then
+            Parted.Delete (I);
+         elsif Parted (I) = ".." then
+            Parted.Delete (I);
+            if I = Parted.First_Index then
+               raise Ada.Directories.Use_Error
+               with "Cannot remove parent when normalizing: " & This;
+            else
+               Parted.Delete (I - 1);
+               I := I - 1;
+            end if;
+         else
+            I := I + 1;
+         end if;
+      end loop;
+
+      return Parted.Flatten (Dir_Separator);
+   end Normal;
 
    -------------------
    -- Canonical_Raw --
@@ -265,7 +355,7 @@ package body Den is
    function Is_Recursive (This : Path) return Boolean
    is (if not Is_Softlink (This)
        then False
-       else OS_Canonical (This) = "");
+       else Exists (Resolve (This)) and then OS_Canonical (This) = "");
 
    -------------------
    -- Target_Length --
@@ -403,7 +493,7 @@ package body Den is
       procedure Find (Parent : Dir_Path; Depth : Positive) is
          Base : constant Dir_Path :=
                   (if Options.Canonicalize /= None
-                   then Canonical_Or_Same
+                   then Semicanonical
                      (Parent (Parent'First .. Parent'Last - 1))
                     & OS.Directory_Separator
                    else Parent);
@@ -422,7 +512,7 @@ package body Den is
                              when None | Den.Base =>
                                Base & Item,
                              when All_With_Dupes | All_Deduped =>
-                               Canonical_Or_Same (Base & Item));
+                               Semicanonical (Base & Item));
             begin
                Enter := True;
                Stop  := False;
@@ -526,6 +616,8 @@ package body Den is
       if This in Root_Path then
          return This;
       end if;
+
+      --  TODO: fix \,/ mix
 
       if This (This'Last) = Dir_Separator then
          return Scrub (This (This'First .. This'Last - 1));
