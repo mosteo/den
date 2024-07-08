@@ -1,5 +1,7 @@
 #define ERR_BUFFER_TOO_SMALL (-1)
 
+#include <stddef.h>
+
 //  Returns 0 for success, -1 for not enough buffer, >=1 for non-recoverable error
 extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz);
 

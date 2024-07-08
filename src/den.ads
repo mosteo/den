@@ -45,6 +45,9 @@ package Den is
    subtype Normal_Path is Path with
      Dynamic_Predicate => Is_Normal (Normal_Path);
 
+   subtype Absnormal_Path is Normal_Path with
+     Dynamic_Predicate => Is_Absolute (Absnormal_Path);
+
    subtype Hard_Path is Path with Dynamic_Predicate => Is_Hard (Hard_Path);
 
    subtype Canonical_Path is Normal_Path with Dynamic_Predicate =>
@@ -100,6 +103,9 @@ package Den is
    --  Remove ".", ".." from path, but without first making it absolute, so it
    --  may raise even for valid relative paths. Use Normal (Absolute (This)) in
    --  such cases.
+
+   function Absnormal (This : Path) return Absnormal_Path
+   is (Normal (Absolute (This)));
 
    type Kinds is
      (Nothing,   -- A path pointing nowhere valid
@@ -168,12 +174,17 @@ package Den is
    --  May raise Unresolvable_Softlink, as the resulting path must not contain
    --  soft links. Note though, that for Kind (This) = Nothing, this can
    --  be made canonical but will point to a non-existent item. Check out
-   --  Semicanonical.
+   --  Pseudocanonical for when a real, existing path is not mandatory.
 
-   function Semicanonical (This : Path) return String;
+   function Pseudocanonical (This : Path) return String;
    --  For broken links, the path will be canonical up to that point, with the
    --  link target appended. For recursive links, the path will be canonical
-   --  and the simple name will remain the same. Should never raise.
+   --  and the simple name will remain the same. For paths with an intermediate
+   --  softlink, it will be resolved if not broken. Should never raise.
+
+   --  Both Canonical and Pseudocanonical are expensive as they can make
+   --  several system calls. For a cheaper alternative, when absolute
+   --  normal paths suffice, use Absnormal.
 
    function Full (This : Path) return Canonical_Path renames Canonical;
 

@@ -1,5 +1,7 @@
 //  The purpose of this file is to be able to use readlink portably
 
+#include "denc.h"
+
 #if defined(__APPLE__)
     #include <sys/syslimits.h>
     #include <sys/stat.h>

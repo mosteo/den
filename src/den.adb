@@ -122,11 +122,11 @@ package body Den is
        then raise Unresolvable_Softlink with "Cannot canonicalize: " & This
        else OS_Canonical (This));
 
-   -------------------
-   -- Semicanonical --
-   -------------------
+   ---------------------
+   -- Pseudocanonical --
+   ---------------------
 
-   function Semicanonical (This : Path) return String
+   function Pseudocanonical (This : Path) return String
    is
       Parted : Path_Parts := Parts (Absolute (This));
       I : Integer := Parted.First_Index;
@@ -144,19 +144,24 @@ package body Den is
                I := I - 1;
             end if;
          else
-            --  TAKE UP TO I, CHECK if ITS SOFTLINK and do WHATEVER
             declare
-               Head : constant Absolute_Path := Up_To (I, Parted);
-               Tail : constant Relative_Path := From (I + 1, Parted);
+               use type Parts;
+               Head : constant Absolute_Path :=
+                        Parted.Up_To (I).Flatten (Dir_Separator);
+               Tail : constant String := -- May be ""
+                        Parted.From (I + 1).Flatten (Dir_Separator);
             begin
                --  At this point, Head is absnormal, though may be a softlink
                if Is_Softlink (Head) then
                   if Is_Broken (Head) then
-                     Parted := Parts (Head) & Parts (Target (Head)) & Parts (Tail);
+                     Parted :=
+                       Parts (Head) & Parts (Target (Head)) & Parts (Tail);
                   elsif Is_Recursive (Head) then
                      --  Leave as is plus tail
+                     null;
                   else
                      --  substitute target plus tail
+                     null;
                   end if;
                else
                   --  Just move on to the next bit
@@ -167,7 +172,7 @@ package body Den is
       end loop;
 
       return Parted.Flatten (Dir_Separator);
-   end Semicanonical;
+   end Pseudocanonical;
 
      --  (if Kind (This) /= Softlink or else Is_Resolvable (This) then
      --       Canonical (This)
@@ -608,6 +613,12 @@ package body Den is
    -----------
 
    function Scrub (This : String) return Path is
+      Bad_Sep : constant Character :=
+                  (case Dir_Separator is
+                      when '/' => '\',
+                      when '\' => '/',
+                      when others =>
+                        raise Program_Error with "Unsupported platform");
    begin
       if This = "" then
          raise Bad_Path with "Bad path: (empty)";
@@ -617,7 +628,9 @@ package body Den is
          return This;
       end if;
 
-      --  TODO: fix \,/ mix
+      if (for some Char of This => Char = Bad_Sep) then
+         return AAA.Strings.Replace (This, "" & Bad_Sep, "" & Dir_Separator);
+      end if;
 
       if This (This'Last) = Dir_Separator then
          return Scrub (This (This'First .. This'Last - 1));
