@@ -132,7 +132,9 @@ package body Den is
    function Canonical (This : Path) return Canonical_Path
    is (if OS_Canonical (This) = "" or else
           OS_Canonical (This) not in Canonical_Path
-       then raise Bad_Path with "Cannot canonicalize: " & This
+       then raise Bad_Path with
+         "Cannot canonicalize: " & This
+         & " [os_canonical: " & OS_Canonical (This) & "]"
        else OS_Canonical (This));
 
    -----------------
@@ -175,12 +177,6 @@ package body Den is
                   I := I - 1;
                end if;
             else
-               if Parted.Up_To (I).To_Path not in Absolute_Path
-               then
-                  raise Program_Error with
-                  Parted.Up_To (I).To_Path;
-               end if;
-
                declare
                   Phead : constant Path_Parts    := Parted.Up_To (I);
                   Head  : constant Absolute_Path := Phead.To_Path;
@@ -395,7 +391,8 @@ package body Den is
    function Is_Recursive (This : Path) return Boolean
    is (if not Is_Softlink (This)
        then False
-       else Exists (Resolve (This)) and then OS_Canonical (This) = "");
+       else Exists (Resolve (This)) and then
+         (OS_Canonical (This) = "" or else Is_Softlink (OS_Canonical (This))));
 
    -------------------
    -- Target_Length --

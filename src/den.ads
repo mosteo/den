@@ -249,6 +249,8 @@ package Den is
 
    end Operators;
 
+   function OS_Canonical (This : Path) return String;
+   --  The OS own canonicalization function
 private
 
    Dir_Separator : constant Character := GNAT.OS_Lib.Directory_Separator;
@@ -258,8 +260,5 @@ private
    function Is_Softlink (This : Path) return Boolean;
    --  Always false in platforms without softlink support. True even for broken
    --  links. False if This doesn't designate anything in the filesystem.
-
-   function OS_Canonical (This : Path) return String;
-   --  The OS own canonicalization function
 
 end Den;

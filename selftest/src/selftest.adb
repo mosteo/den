@@ -148,7 +148,8 @@ begin
         .Union ("tic").Union ("toc")
         .Union ("human").Union ("centi").Union ("pede")
       loop
-         pragma Assert (Is_Recursive (Cases / "loops" / Part) = Supported);
+         pragma Assert (Is_Recursive (Cases / "loops" / Part) = Supported,
+                        OS_Canonical (Cases / "loops" / Part));
       end loop;
 
       --  Canonical & Canonizable
@@ -159,9 +160,11 @@ begin
       exception
          when others => null;
       end;
-      pragma Assert (Canonizable ("..."));
-      pragma Assert (Canonical ("...") = CWD / "...");
-      --  Strange, but "..." is a valid filename (!)
+      if Dir_Separator /= '\' then
+         pragma Assert (Canonizable ("..."));
+         pragma Assert (Canonical ("...") = CWD / "...");
+         --  Strange, but "..." is a valid filename (!) (not in Windows)
+      end if;
       pragma Assert (Canonizable (R / ".."));
       pragma Assert (Canonical (R / "..") = Root (CWD));
       --  Strange, but /.. is resolved to / by the OS (any excess .. I guess)

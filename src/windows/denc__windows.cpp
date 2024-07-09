@@ -70,12 +70,13 @@ int resolve_link(const char * path, std::string &full, size_t bufsiz) {
     DWORD dwRes = GetFinalPathNameByHandle(
         hFile,
         buffer.data(), bufsiz, VOLUME_NAME_DOS);
+		// NOTE: recursive links resolve to themselves in Windows!!
 
     // Close the file handle, no longer needed
     CloseHandle(hFile);
 
     if (dwRes == 0) {
-        // Links is broken or recursive
+        // Links is broken
         return 1;
     } else if (dwRes > bufsiz) {
         // Not enough buffer
@@ -93,23 +94,26 @@ int resolve_link(const char * path, std::string &full, size_t bufsiz) {
 //  Returns 0 for success, -1 for not enough buffer, >=1 for non-recoverable error
 extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz) {
     try {
-        // If the path is a non-broken soft-link, fully resolve it and return
-        // the target canonical path.
-        if (c_is_softlink(inputPath)) {
-            std::string resolved;
-            const int code = resolve_link(inputPath, resolved, bufsiz);
-            if (code == 0) {
-                std::copy(resolved.begin(), resolved.end(), fullPath);
-                fullPath[resolved.size()] = '\0'; // Fscking low-level garbage
-                return 0;
-            } else if (code == -1) {
-                return -1;
-            } else if (code > 0) {
-              return 1;
-            }
+        // If the path is a non-broken soft-link or regular file, fully resolve
+        // it and return the target canonical path with Windows own API
+        std::string resolved;
+        const int code = resolve_link(inputPath, resolved, bufsiz);
+        if (code == 0) {
+            std::copy(resolved.begin(), resolved.end(), fullPath);
+            fullPath[resolved.size()] = '\0'; // Fscking low-level garbage
+            return 0;
+        } else if (code == -1) {
+            return -1;
+        } else if (code > 0) {
+          ;
+          // Broken link, recursives resolve to themselves on windows, or
+          // non-existent file. At this point we can use GNAT.OS_Lib built-in
+          // normalization.
         }
 
-        //  From here on, we are dealing with a regular path
+        //  From here on, we are dealing with a regular path or unresolvable
+        //  link (broken or recursive). The path might contain intermediate
+        //  soft links, so it can still benefit from resolving links.
 
         std::string path = fs::weakly_canonical(inputPath).string();
         if (path.size() >= bufsiz - 1) {
