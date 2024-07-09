@@ -3,13 +3,16 @@ with AAA.Strings; use AAA.Strings;
 with Ada.Containers;
 --  with Ada.Directories;
 with Ada.Text_IO; use Ada.Text_IO;
-with Den; use Den;
 with Den.Iterators;
+with Den.Walk;
 
 --  with GNAT.OS_Lib;
 
 procedure Selftest is
+   use Den;
+   use Den.Walk;
    use Den.Operators;
+
    use type Ada.Containers.Count_Type;
 
    R : constant Path := Driveless_Root;
@@ -160,6 +163,7 @@ begin
       pragma Assert (Canonical ("...") = CWD / "...");
       --  Strange, but "..." is a valid filename (!)
       pragma Assert (Canonizable (R / ".."));
+      pragma Assert (Canonical (R / "..") = Root (CWD));
       --  Strange, but /.. is resolved to / by the OS (any excess .. I guess)
       pragma Assert (not Canonizable (Cases / "loops" / "self"));
       if Supported then
@@ -198,10 +202,28 @@ begin
       end if;
 
       --  Absolute
+      pragma Assert (Absolute (".") = CWD / ".");
+      pragma Assert (Absolute ("a") = CWD / "a");
 
       --  Normal
+      pragma Assert (Normal ("a" / ".") = "a");
+      pragma Assert (Normal ("." / "a") = "a");
+      pragma Assert (Normal (R / "." / "a") = R / "a");
+      pragma Assert (Normal (CWD / "a" / "..") = CWD);
+      pragma Assert (Normal (CWD / ".." / "a") = Parent (CWD) / "a");
+      pragma Assert (Normal (R / "a" / ".." / "a") = R / "a");
+      begin
+         pragma Assert (Normal (R / "..") = R); -- should raise
+         raise Program_Error with "Unexpected pass";
+      exception
+            when others => null;
+      end;
 
       --  Absnormal
+      pragma Assert (Absnormal (".") = CWD);
+      pragma Assert (Absnormal ("a") = CWD / "a");
+      pragma Assert (Absnormal ("a" / ".") = CWD / "a");
+      pragma Assert (Absnormal ("." / "a") = CWD / "a");
 
       --  Name
       pragma Assert (Name ("a") = "a");
