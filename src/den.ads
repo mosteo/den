@@ -66,12 +66,19 @@ package Den is
    is (for all P of This => P in Path);
 
    function Scrub (This : String) return Path;
-   --  Fix obvious problems like trailing '/' or duplicated "//" parts. May
-   --  raise Bad_Path if no good path remains after scrubbing.
+   --  Fix obvious problems like trailing '/', duplicated "//", '\' instead of
+   --  '/' (and viceversa). May raise Bad_Path if no good path remains after
+   --  scrubbing.
 
-   subtype Path_Parts is AAA.Strings.Vector
-     with Dynamic_Predicate => Contains_Parts (Path_Parts);
+   function Can_Scrub (This : String) return Boolean;
+   --  Says if Scrub would not raise Bad_Path;
+
+   type Path_Parts is new AAA.Strings.Vector with null record with
+     Dynamic_Predicate => Contains_Parts (AAA.Strings.Vector (Path_Parts));
    --  All parts in a path (everything in between dir separators)
+
+   function To_Path (This : Path_Parts) return String with
+     Post => (if This.Is_Empty then To_Path'Result = "");
 
    subtype Part is String with
      Dynamic_Predicate =>
@@ -120,6 +127,9 @@ package Den is
      with Static_Predicate => Final_Kinds /= Softlink;
 
    subtype Childless_Kinds is Kinds range File .. Special;
+
+   function Explain (This : Path) return String;
+   --  A string that may be useful while debugging, says the kind of This
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds;
    --  May return Softlink for a self-referential link!
@@ -171,12 +181,18 @@ package Den is
          not (Is_Broken (This) or else Is_Recursive (This))));
 
    function Canonical (This : Path) return Canonical_Path;
-   --  May raise Unresolvable_Softlink, as the resulting path must not contain
-   --  soft links. Note though, that for Kind (This) = Nothing, this can
-   --  be made canonical but will point to a non-existent item. Check out
-   --  Pseudocanonical for when a real, existing path is not mandatory.
+   --  May raise Bad_Path for broken/recursive links, as the resulting path
+   --  must not contain soft links. May also raise if too many ".." appear.
+   --  Note though, that for Kind (This) = Nothing, this can be made canonical
+   --  but will point to a non-existent item. Check out Pseudocanonical for
+   --  when a real, existing path is not mandatory.
 
-   function Pseudocanonical (This : Path) return String;
+   function Canonizable (This : String) return Boolean;
+   --  Says if Canonical (This) will succeed.
+
+   function Pseudocanonical (This : Path) return String with
+     Post => (if Canonizable (This)
+                then Pseudocanonical'Result = Canonical (This));
    --  For broken links, the path will be canonical up to that point, with the
    --  link target appended. For recursive links, the path will be canonical
    --  and the simple name will remain the same. For paths with an intermediate

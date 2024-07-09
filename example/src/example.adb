@@ -6,22 +6,6 @@ with GNAT.OS_Lib;
 procedure Example is
    package OS renames GNAT.OS_Lib;
    use Den;
-
-   -------------
-   -- Explain --
-   -------------
-
-   function Explain (S : Path) return String
-   is (case Kind (S) is
-          when Special  => " (special)",
-          when Softlink =>
-             " --> " & Target (S) &
-             (if Is_Broken (S) then " (broken)" else "") &
-             (if Is_Recursive (S) then " (recursive)" else ""),
-          when Nothing   => " (not found)",
-          when Directory => "" & Dir_Separator,
-          when File      => "");
-
 begin
    Put_Line ("LS: " & Den.Current);
    for Path of Den.Ls (".") loop

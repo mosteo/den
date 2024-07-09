@@ -14,6 +14,9 @@ package body Den is
 
    function OS_Canonical (This : Path) return String;
 
+   Trust_OS_Lib : constant Boolean := Dir_Separator = '/';
+   --  On Windows, GNAT.OS_Lib is unreliable for softlinks
+
    ---------------
    -- Operators --
    ---------------
@@ -109,8 +112,24 @@ package body Den is
                               return C_Strings.C.int
         with Import, Convention => C;
    begin
+      if Trust_OS_Lib then
+         return OS.Is_Symbolic_Link (This);
+      end if;
+
       return C_Is_Softlink (C_Strings.To_C (This).To_Ptr) not in 0;
    end Is_Softlink;
+
+   ---------------
+   -- Can_Scrub --
+   ---------------
+
+   function Can_Scrub (This : String) return Boolean is
+   begin
+      return Scrub (This) /= "";
+   exception
+      when Bad_Path =>
+         return False;
+   end Can_Scrub;
 
    ---------------
    -- Canonical --
@@ -119,8 +138,20 @@ package body Den is
    function Canonical (This : Path) return Canonical_Path
    is (if OS_Canonical (This) = "" or else
           OS_Canonical (This) not in Canonical_Path
-       then raise Unresolvable_Softlink with "Cannot canonicalize: " & This
+       then raise Bad_Path with "Cannot canonicalize: " & This
        else OS_Canonical (This));
+
+   -----------------
+   -- Canonizable --
+   -----------------
+
+   function Canonizable (This : String) return Boolean is
+   begin
+      return Canonical (Scrub (This)) /= "";
+   exception
+      when others =>
+         return False;
+   end Canonizable;
 
    ---------------------
    -- Pseudocanonical --
@@ -128,65 +159,71 @@ package body Den is
 
    function Pseudocanonical (This : Path) return String
    is
-      Parted : Path_Parts := Parts (Absolute (This));
-      I : Integer := Parted.First_Index;
    begin
-      while I <= Parted.Last_Index loop
-         if Parted (I) = "." then
-            Parted.Delete (I);
-         elsif Parted (I) = ".." then
-            Parted.Delete (I);
-            if I = Parted.First_Index then
-               raise Ada.Directories.Use_Error
-               with "Cannot remove parent when canonicalizing: " & This;
-            else
-               Parted.Delete (I - 1);
-               I := I - 1;
-            end if;
-         else
-            declare
-               use type Parts;
-               Head : constant Absolute_Path :=
-                        Parted.Up_To (I).Flatten (Dir_Separator);
-               Tail : constant String := -- May be ""
-                        Parted.From (I + 1).Flatten (Dir_Separator);
-            begin
-               --  At this point, Head is absnormal, though may be a softlink
-               if Is_Softlink (Head) then
-                  if Is_Broken (Head) then
-                     Parted :=
-                       Parts (Head) & Parts (Target (Head)) & Parts (Tail);
-                  elsif Is_Recursive (Head) then
-                     --  Leave as is plus tail
-                     null;
-                  else
-                     --  substitute target plus tail
-                     null;
-                  end if;
+      if Canonizable (This) then
+         return Canonical (This);
+      end if;
+
+      declare
+         Parted : Path_Parts := Parts (Absolute (This));
+         I      : Integer := Parted.First_Index;
+      begin
+         while I <= Parted.Last_Index loop
+            if Parted (I) = "." then
+               Parted.Delete (I);
+            elsif Parted (I) = ".." then
+               Parted.Delete (I);
+               if I = Parted.First_Index then
+                  raise Ada.Directories.Use_Error
+                  with "Cannot remove parent when canonicalizing: " & This;
                else
-                  --  Just move on to the next bit
-                  I := I + 1;
+                  Parted.Delete (I - 1);
+                  I := I - 1;
                end if;
-            end;
-         end if;
-      end loop;
+            else
+               if Parted.Up_To (I).To_Path not in Absolute_Path
+               then
+                  raise Program_Error with
+                  Parted.Up_To (I).To_Path;
+               end if;
 
-      return Parted.Flatten (Dir_Separator);
+               declare
+                  Phead : constant Path_Parts    := Parted.Up_To (I);
+                  Head  : constant Absolute_Path := Phead.To_Path;
+                  Ptail : constant Path_Parts    := Parted.From (I + 1);
+               begin
+                  --  At this point Head is absnormal, though may be a softlink
+                  if Is_Softlink (Head) then
+                     if Is_Broken (Head) then
+                        if not Can_Scrub (Target (Head)) then
+                           raise Bad_Path with
+                             "Target of " & Head
+                             & " is not a path: " & Target (Head);
+                        end if;
+
+                        Parted :=
+                          Parts (Parent (Head)) -- Parent of broken link
+                          & Parts (Scrub (Target (Head))) -- Link target
+                          & Ptail; -- Remainder
+                     elsif Is_Recursive (Head) then
+                        --  Leave as is
+                        I := I + 1;
+                     else -- Valid link
+                        --  Substitute target plus tail
+                        Parted := Parts (Canonical (This)) & Ptail;
+                        I := Parted.First_Index;
+                     end if;
+                  else
+                     --  Just move on to the next bit
+                     I := I + 1;
+                  end if;
+               end;
+            end if;
+         end loop;
+
+         return Parted.To_Path;
+      end;
    end Pseudocanonical;
-
-     --  (if Kind (This) /= Softlink or else Is_Resolvable (This) then
-     --       Canonical (This)
-     --    elsif not Is_Absolute (This) then
-     --       Semicanonical (Current / This)
-     --    elsif Is_Broken (This) then
-     --      (if Has_Parent (This) then
-     --            Semicanonical (Parent (This) / Target (This))
-     --       else
-     --          This)
-     --    elsif Is_Recursive (This) then
-     --       This
-     --    else
-     --       raise Program_Error with "Should be unreachable: " & This);
 
    ----------
    -- Kind --
@@ -229,10 +266,10 @@ package body Den is
    function Parts (This : Path) return Path_Parts is
    begin
       if Is_Root (This) then
-         return AAA.Strings.To_Vector (This);
+         return To_Vector (This);
       end if;
 
-      return Result : Path_Parts := AAA.Strings.Split (This, Dir_Separator) do
+      return Result : Path_Parts := Split (This, Dir_Separator) do
          --  Adjust the root if necessary
          if Is_Absolute (This) then
             declare
@@ -309,7 +346,7 @@ package body Den is
          end if;
       end loop;
 
-      return Parted.Flatten (Dir_Separator);
+      return Parted.To_Path;
    end Normal;
 
    -------------------
@@ -327,6 +364,10 @@ package body Den is
       use type C_Strings.C.int;
       Bufsize : Integer := 32768; -- Theoretically, this is Windows max
    begin
+      if Trust_OS_Lib then
+         return OS.Normalize_Pathname (This);
+      end if;
+
       loop
          declare
             Cbuf : C_Strings.C_String := C_Strings.Buffer (Bufsize);
@@ -458,6 +499,21 @@ package body Den is
       end return;
    end Ls;
 
+   -------------
+   -- Explain --
+   -------------
+
+   function Explain (This : Path) return String
+   is (case Kind (This) is
+          when Special   => " (special)",
+          when Softlink  =>
+             " --> " & Target (This) &
+               (if Is_Broken (This)    then " (broken)"    else "") &
+               (if Is_Recursive (This) then " (recursive)" else ""),
+          when Nothing   => " (not found)",
+          when Directory => "" & Dir_Separator,
+          when File      => "");
+
    ----------
    -- Find --
    ----------
@@ -498,7 +554,7 @@ package body Den is
       procedure Find (Parent : Dir_Path; Depth : Positive) is
          Base : constant Dir_Path :=
                   (if Options.Canonicalize /= None
-                   then Semicanonical
+                   then Pseudocanonical
                      (Parent (Parent'First .. Parent'Last - 1))
                     & OS.Directory_Separator
                    else Parent);
@@ -517,7 +573,7 @@ package body Den is
                              when None | Den.Base =>
                                Base & Item,
                              when All_With_Dupes | All_Deduped =>
-                               Semicanonical (Base & Item));
+                               Pseudocanonical (Base & Item));
             begin
                Enter := True;
                Stop  := False;
@@ -654,5 +710,16 @@ package body Den is
          raise Bad_Path with "Bad path: " & This;
       end if;
    end Scrub;
+
+   -------------
+   -- To_Path --
+   -------------
+
+   function To_Path (This : Path_Parts) return String
+   is (if This.Is_Empty
+       then ""
+       else Scrub (This.Flatten (Dir_Separator)));
+   --  Could be made more efficient. The issue now is that flattening an
+   --  absolute path will result in things like "//home", "c:\\home", etc
 
 end Den;

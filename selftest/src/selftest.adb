@@ -21,7 +21,8 @@ procedure Selftest is
 
    function "+" (S : String) return String renames F;
 
-   Cases : constant Path := +"../example/cases";
+   Cases : constant Relative_Path := +"../example/cases";
+   --  This path must be kept relative for some tests to be effective
 
    --  package Dirs renames Ada.Directories;
    --  package OS renames GNAT.OS_Lib;
@@ -30,7 +31,7 @@ procedure Selftest is
 
    --  Adjust some checks depending on whether git checkout created softlinks
    --  or not. Windows does support softlinks on NTFS at least, and on GH
-   --  runners they're created. In my Windows machine they aren't, no idea why
+   --  runners they're created. Developer mode must be enabled in Windows.
    Supported : constant Boolean := Kind ("source") = Softlink;
    --  This is a link to "src"
 begin
@@ -40,40 +41,6 @@ begin
       delay 33.33;
 
    then abort
-
-      --  Ls
-      for Canon in Boolean'Range loop
-         for P of Ls (".", (Canonicalize => Canon)) loop
-            pragma Assert (Is_Absolute (P) = Canon);
-         end loop;
-      end loop;
-      Put_Line ("OK ls");
-
-      --  Verify that enumeration of troublesome softlinks doesn't bomb.
-      for Canon in Canonical_Parts'Range loop
-         --  Plain enumerating
-         pragma Assert
-           (Find
-              (".." / "example" / "cases",
-               Options => (Canonicalize => Canon, others => <>))
-            .Length > 1);
-         --  Verify filtering
-         for K in Kinds'Range loop
-            for F of Find ("..",
-                           Options => (Canonicalize => Canon, others => <>),
-                           Filter  => Kind_Is (K))
-            loop
-               pragma Assert (Kind (F.Path) = K,
-                              "Expected: " & K'Image
-                              & "; got: " & Kind (F.Path)'Image
-                              & "; path: " & F.Path);
-            end loop;
-         end loop;
-      end loop;
-      --  TODO: we should have some exact comparisons of output traversals with
-      --  all the Find options combinations. Lotsa work...
-      Put_Line ("OK find");
-
       --  Verify some membership tests
 
       --  Any path
@@ -86,6 +53,7 @@ begin
       pragma Assert (Scrub (+"rel/a//tive") in Path);
 
       --  Absolute path
+      pragma Assert (Root (CWD) in Absolute_Path);
       pragma Assert (CWD in Absolute_Path);
       pragma Assert (Is_Absolute (CWD));
       pragma Assert ("a" not in Absolute_Path);
@@ -180,7 +148,7 @@ begin
          pragma Assert (Is_Recursive (Cases / "loops" / Part) = Supported);
       end loop;
 
-      --  Canonical
+      --  Canonical & Canonizable
       begin
          pragma Assert
            (Canonical (Cases / "loops" / "self") in Path); -- raises
@@ -188,10 +156,52 @@ begin
       exception
          when others => null;
       end;
+      pragma Assert (Canonizable ("..."));
+      pragma Assert (Canonical ("...") = CWD / "...");
+      --  Strange, but "..." is a valid filename (!)
+      pragma Assert (Canonizable (R / ".."));
+      --  Strange, but /.. is resolved to / by the OS (any excess .. I guess)
+      pragma Assert (not Canonizable (Cases / "loops" / "self"));
+      if Supported then
+         pragma Assert (Canonical (Cases / "links" / "b") = -- target file
+                          Canonical (Cases) / "links" / "a");
+         pragma Assert (Canonical (Cases / "links" / "h") = -- target dir
+                          Canonical (Cases) / "links" / "g" / "h" / "deep");
+         pragma Assert (Canonical (Cases / "links" / "i" / "h") = -- mid dir
+                          Canonical (Cases) / "links" / "g" / "h");
+         --  Broken links behave depending on OS, so guard
+         if Canonizable (Cases / "links" / "e") then
+            pragma Assert (Canonical (Cases / "links" / "e")
+                           = Canonical (Cases) / "links" / "missing");
+            pragma Assert (Canonical (Cases / "links" / "malformed")
+                           = Canonical (Cases) / "links" / "mal" / "formed");
+         end if;
+      end if;
 
-      --  Canonical_Or_Same
-      pragma Assert (Kind (Canonical_Or_Same (Cases / "loops" / "self"))
+      --  Pseudocanonical
+      pragma Assert (Kind (Pseudocanonical (Cases / "loops" / "self"))
                      = (if Supported then Softlink else File));
+      if Supported then
+         pragma Assert (not Canonizable (Cases / "loops" / "self"));
+         pragma Assert (Pseudocanonical (Cases / "loops" / "self")
+                        = Canonical (Cases) / "loops" / "self"); -- self target
+         pragma Assert (not Canonizable (Cases / "loops" / "tic"));
+         pragma Assert (Pseudocanonical (Cases / "loops" / "tic")
+                        = Canonical (Cases) / "loops" / "tic"); -- cycle target
+         pragma Assert (Pseudocanonical (Cases / "links" / "e") -- brken target
+                        = Canonical (Cases) / "links" / "missing");
+         pragma Assert (Pseudocanonical (Cases / "links" / "malformed")
+                        = Canonical (Cases) / "links" / "mal" / "formed");
+         pragma Assert (not Canonizable (Cases / "links" / "d")); -- self
+         pragma Assert (Pseudocanonical (Cases / "loops" / "d" / "what") -- mid
+                        = Canonical (Cases) / "loops" / "d" / "what");
+      end if;
+
+      --  Absolute
+
+      --  Normal
+
+      --  Absnormal
 
       --  Name
       pragma Assert (Name ("a") = "a");
@@ -283,6 +293,40 @@ begin
          pragma Assert (Seen.Length = 3);
       end;
       Put_Line ("OK iterators");
+
+      --  Ls
+      for Canon in Boolean'Range loop
+         for P of Ls (".", (Canonicalize => Canon)) loop
+            pragma Assert (Is_Absolute (P) = Canon);
+         end loop;
+      end loop;
+      Put_Line ("OK ls");
+
+      --  Verify that enumeration of troublesome softlinks doesn't bomb.
+      for Canon in Canonical_Parts'Range loop
+         --  Plain enumerating
+         pragma Assert
+           (Find
+              (".." / "example" / "cases",
+               Options => (Canonicalize => Canon, others => <>))
+            .Length > 1);
+         --  Verify filtering
+         for K in Kinds'Range loop
+            for F of Find ("..",
+                           Options => (Canonicalize => Canon, others => <>),
+                           Filter  => Kind_Is (K))
+            loop
+               pragma Assert (Kind (F.Path) = K,
+                              "Expected: " & K'Image
+                              & "; got: " & Kind (F.Path)'Image
+                              & "; path: " & F.Path);
+            end loop;
+         end loop;
+         Put_Line ("OK find (" & Canon'Image & ")");
+      end loop;
+      --  TODO: we should have some exact comparisons of output traversals with
+      --  all the Find options combinations. Lotsa work...
+      Put_Line ("OK find");
 
       Timed_Out := False;
    end select;
