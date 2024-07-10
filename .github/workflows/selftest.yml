@@ -12,8 +12,12 @@ jobs:
                 os: [macos-12, ubuntu-latest, windows-latest]
                 v: [^10, ^11, ^12, ^13, ^14, ""]
                 # Ensure latest version is always tested
+                soft: [true, false]
 
         steps:
+            - name: Enable/disable softlinks support in git
+              run: git config --global core.symlinks ${{ matrix.soft }}
+
             - name: Checkout code
               uses: actions/checkout@v2
 
