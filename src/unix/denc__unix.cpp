@@ -1,18 +1,15 @@
 #include "denc.h"
 
+#include <cstdlib>
 #include <cstring>
+#include <errno.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #if defined(__APPLE__)
     #include <sys/syslimits.h>
-    #include <sys/stat.h>
-    #include <unistd.h>
-    #include <errno.h>
 #elif defined(__unix__) || defined(__unix)
-    #include <errno.h>
     #include <limits.h>
-    #include <stdlib.h>
-    #include <sys/stat.h>
-    #include <unistd.h>
 #else
     #error "Unsupported platform"
 #endif
