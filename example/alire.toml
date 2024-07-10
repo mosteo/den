@@ -1,0 +1,21 @@
+name = "example"
+description = "Example of using Den"
+version = "0.1.0-dev"
+
+authors = ["Alejandro R. Mosteo"]
+maintainers = ["Alejandro R. Mosteo <alejandro@mosteo.com>"]
+maintainers-logins = ["mosteo"]
+licenses = "MIT OR Apache-2.0 WITH LLVM-exception"
+website = ""
+tags = []
+
+executables = ["example"]
+
+[build-profiles]
+"*" = "validation"
+
+[[depends-on]]
+den = "*"
+
+[[pins]]
+den = { path='..' }

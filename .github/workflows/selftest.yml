@@ -1,0 +1,32 @@
+name: Selftest
+
+on:
+    pull_request
+
+jobs:
+    build:
+        runs-on: ${{ matrix.os }}
+
+        strategy:
+            matrix:
+                os: [macos-12, ubuntu-latest, windows-latest]
+                v: [^10, ^11, ^12, ^13, ^14, ""]
+                # Ensure latest version is always tested
+                soft: [true, false]
+
+        steps:
+            - name: Enable/disable softlinks support in git
+              run: git config --global core.symlinks ${{ matrix.soft }}
+
+            - name: Checkout code
+              uses: actions/checkout@v2
+
+            - name: Set up Alire
+              uses: alire-project/setup-alire@v3
+              with:
+                  toolchain: gnat_native${{ matrix.v }} gprbuild
+
+            - name: Build and test
+              shell: bash
+              run: |
+                  alr test && cat alire/*.log || { cat alire/*.log; exit 1; }

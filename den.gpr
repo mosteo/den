@@ -4,7 +4,6 @@ project Den is
    for Library_Name use "Den";
    for Library_Version use Project'Library_Name & ".so." & Den_Config.Crate_Version;
 
-   for Source_Dirs use ("src/", "config/");
    for Object_Dir use "obj/" & Den_Config.Build_Profile;
    for Create_Missing_Dirs use "True";
    for Library_Dir use "lib";
@@ -14,8 +13,24 @@ project Den is
      external ("DEN_LIBRARY_TYPE", external ("LIBRARY_TYPE", "static"));
    for Library_Kind use Library_Type;
 
+   for Languages use ("Ada", "C", "C++");
+
+   OS_Sources := ();
+   Detect_Windows := external ("SystemRoot", "not_windows");
+
+   case Detect_Windows is
+      when "not_windows" =>
+         OS_Sources := OS_Sources & ("src/unix/");
+      when others =>
+         OS_Sources := OS_Sources &("src/windows/");
+   end case;
+
+   for Source_Dirs use ("src/", "config/") & OS_Sources;
+
    package Compiler is
       for Default_Switches ("Ada") use Den_Config.Ada_Compiler_Switches;
+      for Default_Switches ("C") use ("-g", "-Wall");
+      for Default_Switches ("C++") use ("-g", "-Wall");
    end Compiler;
 
    package Binder is
