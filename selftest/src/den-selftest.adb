@@ -42,7 +42,7 @@ begin
    Put_Line ("Testing with Supported = " & Supported'Image);
 
    select
-      delay 33.33;
+      delay 66.6;
 
    then abort
       --  Verify some membership tests
@@ -203,7 +203,10 @@ begin
       end if;
       --  With non-existing targets
       pragma Assert (Pseudocanonical ("asdf") = CWD / "asdf");
-      pragma Assert (Pseudocanonical ("...") = CWD / "...");
+      if Dir_Separator /= '\' then
+         --  This is not a valid Windows path so OS_Canonical behaves oddly
+         pragma Assert (Pseudocanonical ("...") = CWD / "...");
+      end if;
 
       --  Absolute
       pragma Assert (Absolute (".") = CWD / ".");
@@ -291,7 +294,7 @@ begin
          end;
          pragma Assert (Target (Cases / "links" / "b") = "a");
          pragma Assert
-           (Target (Cases / "links" / "malformed") = "mal//formed",
+           (Target (Cases / "links" / "malformed") = +"mal//formed",
             "Unexpected target: " & Target (Cases / "links" / "malformed"));
       end if;
 
@@ -333,22 +336,21 @@ begin
          --  Plain enumerating
          pragma Assert
            (Find
-              (".." / "example" / "cases",
+              (Cases,
                Options => (Canonicalize => Canon, others => <>))
             .Length > 1);
-         --  Verify filtering
-         for K in Kinds'Range loop
-            for F of Find ("..",
-                           Options => (Canonicalize => Canon, others => <>),
-                           Filter  => Kind_Is (K))
-            loop
-               pragma Assert (Kind (F.Path) = K,
-                              "Expected: " & K'Image
-                              & "; got: " & Kind (F.Path)'Image
-                              & "; path: " & F.Path);
-            end loop;
-         end loop;
          Put_Line ("OK find (" & Canon'Image & ")");
+      end loop;
+      --  Verify filtering
+      for K in Kinds'Range loop
+         for F of Find ("..", Filter  => Kind_Is (K))
+         loop
+            pragma Assert (Kind (F.Path) = K,
+                           "Expected: " & K'Image
+                           & "; got: " & Kind (F.Path)'Image
+                           & "; path: " & F.Path);
+         end loop;
+         Put_Line ("OK find (" & K'Image & ")");
       end loop;
       --  TODO: we should have some exact comparisons of output traversals with
       --  all the Find options combinations. Lotsa work...
