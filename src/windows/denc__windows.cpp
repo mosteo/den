@@ -51,80 +51,44 @@ std::wstring char_to_wstring(const char* cstr) {
 }
 
 //  Returns 0 for success, -1 for not enough buffer, >=1 for non-recoverable error
-int resolve_link(const char * path, std::string &full, size_t bufsiz) {
-    // Using the Windows API, get the softlink target
-
-    // initialize a std::string of bufsiz length
-    std::string buffer(bufsiz, '\0');
-
-    // Obtain the file handle
-    HANDLE hFile = CreateFileA(
-            path,
-            GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
-
-    if (hFile == INVALID_HANDLE_VALUE) {
-        return 1;
-    }
-
-    // Returns buffer used or needed, or 0 for error
-    DWORD dwRes = GetFinalPathNameByHandle(
-        hFile,
-        buffer.data(), bufsiz, VOLUME_NAME_DOS);
-		// NOTE: recursive links resolve to themselves in Windows!!
-
-    // Close the file handle, no longer needed
-    CloseHandle(hFile);
-
-    if (dwRes == 0) {
-        // Links is broken
-        return 1;
-    } else if (dwRes > bufsiz) {
-        // Not enough buffer
-        return -1;
-    } else {
-        // Remove any stupid \\?\ prefix
-        if (buffer.size() >= 4 && buffer.substr(0, 4) == "\\\\?\\") {
-            buffer = buffer.substr(4);
-        }
-        full = buffer;
-        return 0;
-    }
-}
-
-//  Returns 0 for success, -1 for not enough buffer, >=1 for non-recoverable error
 extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz) {
     try {
-        // If the path is a non-broken soft-link or regular file, fully resolve
-        // it and return the target canonical path with Windows own API
-        std::string resolved;
-        const int code = resolve_link(inputPath, resolved, bufsiz);
-        if (code == 0) {
-            std::copy(resolved.begin(), resolved.end(), fullPath);
-            fullPath[resolved.size()] = '\0'; // Fscking low-level garbage
+        // Obtain the file handle
+        HANDLE hFile = CreateFileA(
+                inputPath,
+                GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+
+        if (hFile == INVALID_HANDLE_VALUE) {
+            return 1;
+        }
+
+        // initialize a std::string of bufsiz length
+        std::string buffer(bufsiz, '\0');
+
+        // Returns buffer used or needed, or 0 for error
+        DWORD dwRes = GetFinalPathNameByHandle(
+            hFile,
+            buffer.data(), bufsiz, VOLUME_NAME_DOS);
+            // NOTE: recursive links resolve to themselves in Windows!!
+
+        // Close the file handle, no longer needed
+        CloseHandle(hFile);
+
+        if (dwRes == 0) {
+            // Links is broken
+            return 1;
+        } else if (dwRes >= bufsiz) {
+            // Not enough buffer
+            return -1;
+        } else {
+            // Remove any stupid \\?\ prefix
+            if (buffer.size() >= 4 && buffer.substr(0, 4) == "\\\\?\\") {
+                buffer = buffer.substr(4);
+            }
+            // Copy from buffer to fullPath
+            strcpy(fullPath, buffer.c_str());
             return 0;
-        } else if (code == -1) {
-            return -1;
-        } else if (code > 0) {
-          ;
-          // Broken link, recursives resolve to themselves on windows, or
-          // non-existent file. At this point we can use GNAT.OS_Lib built-in
-          // normalization.
         }
-
-        //  From here on, we are dealing with a regular path or unresolvable
-        //  link (broken or recursive). The path might contain intermediate
-        //  soft links, so it can still benefit from resolving links.
-
-        std::string path = fs::weakly_canonical(inputPath).string();
-        if (path.size() >= bufsiz - 1) {
-            return -1;
-        }
-        // copy from path to fullPath with null terminator
-        std::copy(path.begin(), path.end(), fullPath);
-        fullPath[path.size()] = '\0'; // Fscking low-level garbage
-        // print debug obtained string
-        // std::cout << "Canonical path: " << fullPath << std::endl;
-        return 0;
     } catch (const std::exception& e) {
         std::cerr << "Error getting canonical path: " << e.what() << std::endl;
         return 1;
