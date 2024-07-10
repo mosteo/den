@@ -82,7 +82,9 @@ begin
           not in Hard_Path) = Supported);
       pragma Assert -- middle path is softlink (i)
         ((Canonical ("..") / "example" / "cases" / "links" / "i" / "h"
-          not in Hard_Path) = Supported);
+         not in Hard_Path));
+      --  If Supported, not because of softlink; otherwise not because
+      --  non-existent.
 
       --  Canonical path
       pragma Assert (R in Canonical_Path);
@@ -92,7 +94,9 @@ begin
       pragma Assert (CWD / ".." not in Canonical_Path);
       pragma Assert -- middle path is softlink (i)
         ((Canonical ("..") / "example" / "cases" / "links" / "i" / "h"
-          not in Canonical_Path) = Supported);
+         not in Canonical_Path));
+      --  If Supported, not because of softlink; otherwise not because
+      --  non-existent.
 
       --  Root path
       pragma Assert (R in Root_Path);
@@ -166,7 +170,7 @@ begin
       pragma Assert (Canonizable (R / ".."));
       pragma Assert (Canonical (R / "..") = Root (CWD));
       --  Strange, but /.. is resolved to / by the OS (any excess .. I guess)
-      pragma Assert (not Canonizable (Cases / "loops" / "self"));
+      pragma Assert (not Canonizable (Cases / "loops" / "self") = Supported);
       if Supported then
          pragma Assert (Canonical (Cases / "links" / "b") = -- target file
                           Canonical (Cases) / "links" / "a");
