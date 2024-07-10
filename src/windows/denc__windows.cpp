@@ -65,7 +65,7 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
         // Returns buffer used or needed, or 0 for error
         DWORD dwRes = GetFinalPathNameByHandle(
             hFile,
-            buffer.data(), bufsiz, VOLUME_NAME_DOS);
+            const_cast<LPSTR>(buffer.c_str()), bufsiz, VOLUME_NAME_DOS);
             // NOTE: recursive links resolve to themselves in Windows!!
 
         // Close the file handle, no longer needed
