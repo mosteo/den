@@ -1,12 +1,9 @@
-#include <filesystem>
 #include <cstdio>
 #include <windows.h>
 #include <iostream>
 #include <vector>
 
 #include "denc.h"
-
-namespace fs = std::filesystem;
 
 typedef struct _REPARSE_DATA_BUFFER {
     ULONG  ReparseTag;
