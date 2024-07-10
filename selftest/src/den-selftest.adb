@@ -3,13 +3,16 @@ with AAA.Strings; use AAA.Strings;
 with Ada.Containers;
 --  with Ada.Directories;
 with Ada.Text_IO; use Ada.Text_IO;
-with Den; use Den;
 with Den.Iterators;
+with Den.Walk;
 
 --  with GNAT.OS_Lib;
 
-procedure Selftest is
+procedure Den.Selftest is
+   use Den;
+   use Den.Walk;
    use Den.Operators;
+
    use type Ada.Containers.Count_Type;
 
    R : constant Path := Driveless_Root;
@@ -21,7 +24,8 @@ procedure Selftest is
 
    function "+" (S : String) return String renames F;
 
-   Cases : constant Path := +"../example/cases";
+   Cases : constant Relative_Path := +"../example/cases";
+   --  This path must be kept relative for some tests to be effective
 
    --  package Dirs renames Ada.Directories;
    --  package OS renames GNAT.OS_Lib;
@@ -30,50 +34,17 @@ procedure Selftest is
 
    --  Adjust some checks depending on whether git checkout created softlinks
    --  or not. Windows does support softlinks on NTFS at least, and on GH
-   --  runners they're created. In my Windows machine they aren't, no idea why
+   --  runners they're created. Developer mode must be enabled in Windows.
    Supported : constant Boolean := Kind ("source") = Softlink;
    --  This is a link to "src"
+
 begin
    Put_Line ("Testing with Supported = " & Supported'Image);
 
    select
-      delay 33.33;
+      delay 66.6;
 
    then abort
-
-      --  Ls
-      for Canon in Boolean'Range loop
-         for P of Ls (".", (Canonicalize => Canon)) loop
-            pragma Assert (Is_Absolute (P) = Canon);
-         end loop;
-      end loop;
-      Put_Line ("OK ls");
-
-      --  Verify that enumeration of troublesome softlinks doesn't bomb.
-      for Canon in Canonical_Parts'Range loop
-         --  Plain enumerating
-         pragma Assert
-           (Find
-              (".." / "example" / "cases",
-               Options => (Canonicalize => Canon, others => <>))
-            .Length > 1);
-         --  Verify filtering
-         for K in Kinds'Range loop
-            for F of Find ("..",
-                           Options => (Canonicalize => Canon, others => <>),
-                           Filter  => Kind_Is (K))
-            loop
-               pragma Assert (Kind (F.Path) = K,
-                              "Expected: " & K'Image
-                              & "; got: " & Kind (F.Path)'Image
-                              & "; path: " & F.Path);
-            end loop;
-         end loop;
-      end loop;
-      --  TODO: we should have some exact comparisons of output traversals with
-      --  all the Find options combinations. Lotsa work...
-      Put_Line ("OK find");
-
       --  Verify some membership tests
 
       --  Any path
@@ -86,6 +57,7 @@ begin
       pragma Assert (Scrub (+"rel/a//tive") in Path);
 
       --  Absolute path
+      pragma Assert (Root (CWD) in Absolute_Path);
       pragma Assert (CWD in Absolute_Path);
       pragma Assert (Is_Absolute (CWD));
       pragma Assert ("a" not in Absolute_Path);
@@ -115,9 +87,9 @@ begin
       --  Canonical path
       pragma Assert (R in Canonical_Path);
       pragma Assert (Root (CWD) in Canonical_Path);
-      pragma Assert (R / "asdf" in Canonical_Path);
-      pragma Assert (R / "." / "asdf" not in Canonical_Path);
-      pragma Assert (R / ".." / "asdf" not in Canonical_Path);
+      pragma Assert (R / "asdf" not in Canonical_Path); -- non-existing
+      pragma Assert (R / "." not in Canonical_Path);
+      pragma Assert (CWD / ".." not in Canonical_Path);
       pragma Assert -- middle path is softlink (i)
         ((Canonical ("..") / "example" / "cases" / "links" / "i" / "h"
           not in Canonical_Path) = Supported);
@@ -177,10 +149,11 @@ begin
         .Union ("tic").Union ("toc")
         .Union ("human").Union ("centi").Union ("pede")
       loop
-         pragma Assert (Is_Recursive (Cases / "loops" / Part) = Supported);
+         pragma Assert (Is_Recursive (Cases / "loops" / Part) = Supported,
+                        OS_Canonical (Cases / "loops" / Part));
       end loop;
 
-      --  Canonical
+      --  Canonical & Canonizable
       begin
          pragma Assert
            (Canonical (Cases / "loops" / "self") in Path); -- raises
@@ -188,10 +161,76 @@ begin
       exception
          when others => null;
       end;
+      pragma Assert (not Canonizable ("not_a_real_file"));
+      --  Strange, but "..." is a valid filename (!) (not in Windows)
+      pragma Assert (Canonizable (R / ".."));
+      pragma Assert (Canonical (R / "..") = Root (CWD));
+      --  Strange, but /.. is resolved to / by the OS (any excess .. I guess)
+      pragma Assert (not Canonizable (Cases / "loops" / "self"));
+      if Supported then
+         pragma Assert (Canonical (Cases / "links" / "b") = -- target file
+                          Canonical (Cases) / "links" / "a");
+         pragma Assert (Canonical (Cases / "links" / "h") = -- target dir
+                          Canonical (Cases) / "links" / "g" / "h" / "deep");
+         pragma Assert (Canonical (Cases / "links" / "i" / "h") = -- mid dir
+                          Canonical (Cases) / "links" / "g" / "h");
+      end if;
 
-      --  Canonical_Or_Same
-      pragma Assert (Kind (Canonical_Or_Same (Cases / "loops" / "self"))
+      --  Pseudocanonical
+      pragma Assert (Kind (Pseudocanonical (Cases / "loops" / "self"))
                      = (if Supported then Softlink else File));
+      if Supported then
+         pragma Assert (not Canonizable (Cases / "loops" / "self"));
+         pragma Assert (Pseudocanonical (Cases / "loops" / "self")
+                        = Canonical (Cases) / "loops" / "self"); -- self target
+         pragma Assert (not Canonizable (Cases / "loops" / "tic"));
+         pragma Assert (Pseudocanonical (Cases / "loops" / "tic")
+                        = Canonical (Cases) / "loops" / "tic"); -- cycle target
+         pragma Assert (Pseudocanonical (Cases / "links" / "e") -- brken target
+                        = Canonical (Cases) / "links" / "missing");
+         pragma Assert (Pseudocanonical (Cases / "links" / "malformed")
+                        = Canonical (Cases) / "links" / "mal" / "formed");
+         pragma Assert (not Canonizable (Cases / "links" / "d")); -- self
+         pragma Assert (Pseudocanonical (Cases / "loops" / "d" / "what") -- mid
+                        = Canonical (Cases) / "loops" / "d" / "what");
+         --  Broken links
+         pragma Assert (Pseudocanonical (Cases / "links" / "e")
+                        = Canonical (Cases) / "links" / "missing");
+         pragma Assert (Pseudocanonical (Cases / "links" / "malformed")
+                        = Canonical (Cases) / "links" / "mal" / "formed");
+         pragma Assert (Pseudocanonical (Cases / "links" / "i" / "what") -- mid
+                        = Canonical (Cases) / "links" / "g" / "what");
+      end if;
+      --  With non-existing targets
+      pragma Assert (Pseudocanonical ("asdf") = CWD / "asdf");
+      if Dir_Separator /= '\' then
+         --  This is not a valid Windows path so OS_Canonical behaves oddly
+         pragma Assert (Pseudocanonical ("...") = CWD / "...");
+      end if;
+
+      --  Absolute
+      pragma Assert (Absolute (".") = CWD / ".");
+      pragma Assert (Absolute ("a") = CWD / "a");
+
+      --  Normal
+      pragma Assert (Normal ("a" / ".") = "a");
+      pragma Assert (Normal ("." / "a") = "a");
+      pragma Assert (Normal (R / "." / "a") = R / "a");
+      pragma Assert (Normal (CWD / "a" / "..") = CWD);
+      pragma Assert (Normal (CWD / ".." / "a") = Parent (CWD) / "a");
+      pragma Assert (Normal (R / "a" / ".." / "a") = R / "a");
+      begin
+         pragma Assert (Normal (R / "..") = R); -- should raise
+         raise Program_Error with "Unexpected pass";
+      exception
+            when others => null;
+      end;
+
+      --  Absnormal
+      pragma Assert (Absnormal (".") = CWD);
+      pragma Assert (Absnormal ("a") = CWD / "a");
+      pragma Assert (Absnormal ("a" / ".") = CWD / "a");
+      pragma Assert (Absnormal ("." / "a") = CWD / "a");
 
       --  Name
       pragma Assert (Name ("a") = "a");
@@ -255,7 +294,7 @@ begin
          end;
          pragma Assert (Target (Cases / "links" / "b") = "a");
          pragma Assert
-           (Target (Cases / "links" / "malformed") = "mal//formed",
+           (Target (Cases / "links" / "malformed") = +"mal//formed",
             "Unexpected target: " & Target (Cases / "links" / "malformed"));
       end if;
 
@@ -284,9 +323,42 @@ begin
       end;
       Put_Line ("OK iterators");
 
+      --  Ls
+      for Canon in Boolean'Range loop
+         for P of Ls (".", (Canonicalize => Canon)) loop
+            pragma Assert (Is_Absolute (P) = Canon);
+         end loop;
+      end loop;
+      Put_Line ("OK ls");
+
+      --  Verify that enumeration of troublesome softlinks doesn't bomb.
+      for Canon in Canonical_Parts'Range loop
+         --  Plain enumerating
+         pragma Assert
+           (Find
+              (Cases,
+               Options => (Canonicalize => Canon, others => <>))
+            .Length > 1);
+         Put_Line ("OK find (" & Canon'Image & ")");
+      end loop;
+      --  Verify filtering
+      for K in Kinds'Range loop
+         for F of Find ("..", Filter  => Kind_Is (K))
+         loop
+            pragma Assert (Kind (F.Path) = K,
+                           "Expected: " & K'Image
+                           & "; got: " & Kind (F.Path)'Image
+                           & "; path: " & F.Path);
+         end loop;
+         Put_Line ("OK find (" & K'Image & ")");
+      end loop;
+      --  TODO: we should have some exact comparisons of output traversals with
+      --  all the Find options combinations. Lotsa work...
+      Put_Line ("OK find");
+
       Timed_Out := False;
    end select;
 
    pragma Assert (not Timed_Out, "Timed out");
 
-end Selftest;
+end Den.Selftest;

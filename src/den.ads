@@ -1,7 +1,5 @@
 with AAA.Strings;
 
-with Ada.Containers.Indefinite_Ordered_Multisets;
-
 with GNAT.OS_Lib;
 
 package Den is
@@ -10,9 +8,8 @@ package Den is
    --  Raised when attempting to obtain a path from a plain string in some
    --  conversions.
 
-   Recursive_Softlink : exception;
-   --  Raised for softlinks that point to themselves, directly or through
-   --  several hops, and that hence cannot be resolved as a canonical path.
+   Unresolvable_Softlink : exception;
+   --  Raised by functions that require a valid target at some point
 
    Dir_Separator : constant Character;
 
@@ -46,6 +43,9 @@ package Den is
    subtype Normal_Path is Path with
      Dynamic_Predicate => Is_Normal (Normal_Path);
 
+   subtype Absnormal_Path is Normal_Path with
+     Dynamic_Predicate => Is_Absolute (Absnormal_Path);
+
    subtype Hard_Path is Path with Dynamic_Predicate => Is_Hard (Hard_Path);
 
    subtype Canonical_Path is Normal_Path with Dynamic_Predicate =>
@@ -64,12 +64,19 @@ package Den is
    is (for all P of This => P in Path);
 
    function Scrub (This : String) return Path;
-   --  Fix obvious problems like trailing '/' or duplicated "//" parts. May
-   --  raise Bad_Path if no good path remains after scrubbing.
+   --  Fix obvious problems like trailing '/', duplicated "//", '\' instead of
+   --  '/' (and viceversa). May raise Bad_Path if no good path remains after
+   --  scrubbing.
 
-   subtype Path_Parts is AAA.Strings.Vector
-     with Dynamic_Predicate => Contains_Parts (Path_Parts);
+   function Can_Scrub (This : String) return Boolean;
+   --  Says if Scrub would not raise Bad_Path;
+
+   type Path_Parts is new AAA.Strings.Vector with null record with
+     Dynamic_Predicate => Contains_Parts (AAA.Strings.Vector (Path_Parts));
    --  All parts in a path (everything in between dir separators)
+
+   function To_Path (This : Path_Parts) return String with
+     Post => (if This.Is_Empty then To_Path'Result = "");
 
    subtype Part is String with
      Dynamic_Predicate =>
@@ -81,6 +88,9 @@ package Den is
 
    subtype Relative_Parts is Part with Dynamic_Predicate =>
      Relative_Parts = Parent_Dir or else Relative_Parts = Current_Dir;
+
+   function Absolute (This : Path) return Absolute_Path with
+     Post => (if Is_Absolute (This) then Absolute'Result = This);
 
    function Ancestors (This : Normal_Path) return Sorted_Paths;
    --  Returns all ancestors of this path, without canonicalizing it first.
@@ -94,6 +104,14 @@ package Den is
    function Is_Normal (This : Path) return Boolean
    is (for all P of Parts (This) => P not in Relative_Parts);
 
+   function Normal (This : Path) return Normal_Path;
+   --  Remove ".", ".." from path, but without first making it absolute, so it
+   --  may raise even for valid relative paths. Use Normal (Absolute (This)) in
+   --  such cases.
+
+   function Absnormal (This : Path) return Absnormal_Path
+   is (Normal (Absolute (This)));
+
    type Kinds is
      (Nothing,   -- A path pointing nowhere valid
       Directory,
@@ -103,10 +121,19 @@ package Den is
 
    subtype Existing_Kinds is Kinds range Kinds'Succ (Nothing) .. Kinds'Last;
 
+   subtype Existing_Path is Path
+     with Dynamic_Predicate => Kind (Existing_Path) in Existing_Kinds;
+
    subtype Final_Kinds is Kinds
      with Static_Predicate => Final_Kinds /= Softlink;
 
    subtype Childless_Kinds is Kinds range File .. Special;
+
+   subtype Canonical_Kinds is Kinds with
+     Dynamic_Predicate => Canonical_Kinds not in Nothing | Softlink;
+
+   function Explain (This : Path) return String;
+   --  A string that may be useful while debugging, says the kind of This
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds;
    --  May return Softlink for a self-referential link!
@@ -115,8 +142,9 @@ package Den is
    is (Kind (This, Resolve_Links => True));
 
    function Is_Hard (This : Path) return Boolean
-   is ((for all A of Ancestors (This) => Kind (A) /= Softlink)
-       and then Kind (This) /= Softlink);
+   is ((for all A of Ancestors (This) => Kind (A) = Directory)
+       and then Kind (This) in Canonical_Kinds);
+   --  Note that a non-existing path maybe hard
 
    function Exists (This : Path; Resolve_Links : Boolean := False)
                     return Boolean
@@ -136,24 +164,51 @@ package Den is
 
    function Root (This : Absolute_Path) return Root_Path;
 
+   function Resolve (This : Path) return Path;
+   --  Identity for non-links, else change This for its target without further
+   --  processing. Note that the result might be a new soft link. Intermediate
+   --  softlinks are not resolved either. Use with care, prefer Canonical.
+   --  Note also that Scrub will be performed on Target (This), so use Target
+   --  for the raw contents of a softlink. May raise if the result is not a
+   --  well-formed Path even after scrubbing.
+
    function Is_Broken (This : Path) return Boolean
-   is (Kind (This) = Softlink and then not Target_Exists (This));
+   is (Kind (This) = Softlink and then not Exists (Resolve (This)));
    --  Note that this is false for a path that points to nothing
 
    function Is_Recursive (This : Path) return Boolean
      with Post => Kind (This) = Softlink or else Is_Recursive'Result = False;
    --  Can only be True if this designates a softlink
 
-   function Canonical (This : Path) return Canonical_Path;
-   --  May raise Recursive_Softlink
+   function Is_Resolvable (This : Path) return Boolean
+   is (Kind (This) /= Nothing and then
+      (Kind (This) /= Softlink or else
+         not (Is_Broken (This) or else Is_Recursive (This))));
 
-   function Canonical_Or_Same (This : Path) return Path with
-     Post =>
-       (Is_Recursive (This) and then Canonical_Or_Same'Result = This)
-        or else Canonical_Or_Same'Result in Canonical_Path;
-   --  Won't ever raise, but for uncanonizable paths it will return This
+   function Canonical (This : Existing_Path) return Canonical_Path;
+   --  Returns the absolute hard path to This, which would be unique if
+   --  no hard links are involved. May raise Bad_Path for broken/recursive
+   --  links, as the resulting path must not contain soft links. Check out
+   --  Pseudocanonical for when a real, existing path is not mandatory.
 
-   function Full (This : Path) return Canonical_Path renames Canonical;
+   function Canonizable (This : String) return Boolean;
+   --  Says if Canonical (This) will succeed.
+
+   function Pseudocanonical (This : Path) return Absolute_Path with
+     Post => (if Canonizable (This)
+                then Pseudocanonical'Result = Canonical (This));
+   --  For broken links, the path will be canonical up to that point, with the
+   --  link target appended. For recursive links, the path will be canonical
+   --  and the simple name will remain the same. For paths with an intermediate
+   --  softlink, it will be resolved if resolvable. When there are too many
+   --  "..", they're dropped silently. If a broken link contains a string that
+   --  is an invalid path, the link will not be resolved. SHOULD NEVER RAISE.
+
+   --  Both Canonical and Pseudocanonical are expensive as they can make
+   --  several system calls. For a cheaper alternative, when absolute normal
+   --  paths suffice, use Absnormal, which does the same but resolving links.
+
+   function Full (This : Path) return Canonical_Path renames Pseudocanonical;
 
    function Name (This : Path) return Part
      with Post => (if Is_Root (This) then Name'Result = This);
@@ -175,14 +230,6 @@ package Den is
    is (Parent (Canonical (This)))
      with Pre => not Is_Root (This);
 
-   function Resolve (This : Path) return Path;
-   --  Identity for non-links, else change This for its target without further
-   --  processing. Note that the result might be a new soft link. Intermediate
-   --  softlinks are not resolved either. Use with care, prefer Canonical.
-   --  Note also that Scrub will be performed on Target (This), so use Target
-   --  for the raw contents of a softlink. May raise if the result is not a
-   --  well-formed Path even after scrubbing.
-
    function Target_Length (This : Path) return Positive
      with Pre => Kind (This) = Softlink;
    --  The length of a softlink target name. Not generally useful to clients
@@ -200,104 +247,6 @@ package Den is
    --  that. The returned result is not normalized or resolved, use Full_Path
    --  for that. Note that the result may be not a proper path, e.g. something
    --  like "mal//formed". Use Scrub to clean such things.
-
-   type Ls_Options is record
-      Canonicalize : Boolean := False;
-   end record;
-
-   function Ls (This    : Path;
-                Options : Ls_Options := (others => <>))
-                return Sorted_Paths
-     with Post =>
-       (case Kind (This) is
-          when Nothing                   => Ls'Result.Is_Empty,
-          when Softlink | File | Special => Ls'Result.Length in 1,
-          when others                    => True);
-   --  Return immediate children of a directory. Won't include "." or ".."
-
-   function Dir (This    : Path;
-                 Options : Ls_Options := (others => <>))
-                 return Sorted_Paths
-                 renames Ls;
-
-   type Filters is interface;
-
-   function Match (This : Filters; Item : Path) return Boolean is abstract;
-   --  Paths matched will be visited
-
-   type No_Filter is new Filters with null record;
-
-   overriding function Match (Unused_This : No_Filter;
-                              Unused_Item : Path)
-                              return Boolean is (True) with Inline;
-
-   type Kind_Is_Filter (Kind : Kinds) is new Filters with null record;
-
-   overriding function Match (This : Kind_Is_Filter;
-                              Item : Path)
-                              return Boolean is (Kind (Item) = This.Kind)
-     with Inline;
-
-   function Kind_Is (Kind : Kinds) return Kind_Is_Filter
-   is (Kind_Is_Filter'(Kind => Kind));
-
-   subtype Depths is Natural;
-
-   type Item (Length : Natural) is record
-      Path  : Den.Path (1 .. Length);
-      Depth : Depths;
-      --  0 depth is for the top-level file only, <>/file_0_depth
-      --  1 depth is for files inside top-level dir, <>/dir/files_1_depth
-   end record;
-
-   function "<" (L, R : Item) return Boolean is (L.Path < R.Path);
-
-   type Canonical_Parts is
-     (None,    -- Do not canonicalize anything
-      Base,    -- Canonicalize the base directory of a path (all but the name)
-      All_With_Dupes, -- Canonicalize the full path, don't dedupe
-      All_Deduped     -- Canonicalize the full path, dedupe targets
-     );
-
-   type Find_Options is record
-      Enter_Regular_Dirs    : Boolean := True;
-      Enter_Softlinked_Dirs : Boolean := False;
-      --  Beware that loops may occur and the user should break them
-      Visit_Softlinks       : Boolean := True;
-      --  Whether Action will be called on softlinks
-      Canonicalize          : Canonical_Parts := None;
-      --  Note that Complete_Deduped requires storing all found canonical paths
-      --  to avoid revisiting them through several converging softlinks, so it
-      --  may take O(n) memory on the number of paths.
-   end record;
-
-   procedure Find
-     (This    : Path;
-      Action  : access procedure (This  : Item;
-                                  Enter : in out Boolean;
-                                  Stop  : in out Boolean);
-      --  Use action to prevent entering a particular dir, or to stop early.
-      Options : Find_Options  := (others => <>);
-      Filter  : Filters'Class := No_Filter'(null record));
-   --  Will visit all children of This, or only This if not a directory, if it
-   --  exists. If given a Filter, Action will be only called for those matching
-   --  it. The order of visiting is alphabetical. "." and ".." are never
-   --  visited. Complexity is O(n log n) due to the sorting of entries in
-   --  a directory.
-
-   package Item_Sets is new Ada.Containers.Indefinite_Ordered_Multisets (Item);
-   --  Multiset as to preserve the semantics of All_With_Dupes
-
-   subtype Items is Item_Sets.Set;
-
-   function Find
-     (This    : Path;
-      Options : Find_Options  := (others => <>);
-      Filter  : Filters'Class := No_Filter'(null record))
-      return Items;
-   --  As the procedure version, but returns the paths that would be visited.
-   --  May take a long time without feedback, and softlink dir loops will cause
-   --  infinite recursion.
 
    function Current return Path;
    function CWD return Path renames Current;
@@ -317,5 +266,11 @@ private
    function Is_Softlink (This : Path) return Boolean;
    --  Always false in platforms without softlink support. True even for broken
    --  links. False if This doesn't designate anything in the filesystem.
+
+   function OS_Canonical (This : Path) return String;
+   --  The OS own canonicalization function. Returns a canonical path if
+   --  This exists, or "" otherwise. This is not a "clever" function like
+   --  GNAT.OS_Lib.Normalize_Pathname or std::filesystem::weak_canonical.
+   --  To preserve cross-platform behavior, we do that in Pseudocanonical.
 
 end Den;
