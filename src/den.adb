@@ -6,10 +6,6 @@ package body Den is
 
    package C renames C_Strings.C;
    package Dirs renames Ada.Directories;
-   package OS renames GNAT.OS_Lib;
-
-   Trust_OS_Lib : constant Boolean := Dir_Separator = '/';
-   --  On Windows, GNAT.OS_Lib is unreliable for softlinks
 
    ---------------
    -- Operators --
@@ -106,10 +102,6 @@ package body Den is
                               return C_Strings.C.int
         with Import, Convention => C;
    begin
-      if Trust_OS_Lib then
-         return OS.Is_Symbolic_Link (This);
-      end if;
-
       return C_Is_Softlink (C_Strings.To_C (This).To_Ptr) not in 0;
    end Is_Softlink;
 
@@ -129,7 +121,7 @@ package body Den is
    -- Canonical --
    ---------------
 
-   function Canonical (This : Path) return Canonical_Path
+   function Canonical (This : Existing_Path) return Canonical_Path
    is (if OS_Canonical (This) = "" or else
           OS_Canonical (This) not in Canonical_Path
        then raise Bad_Path with
@@ -153,7 +145,7 @@ package body Den is
    -- Pseudocanonical --
    ---------------------
 
-   function Pseudocanonical (This : Path) return String
+   function Pseudocanonical (This : Path) return Absolute_Path
    is
    begin
       if Canonizable (This) then
@@ -170,8 +162,7 @@ package body Den is
             elsif Parted (I) = ".." then
                Parted.Delete (I);
                if I = Parted.First_Index then
-                  raise Ada.Directories.Use_Error
-                  with "Cannot remove parent when canonicalizing: " & This;
+                  null; -- Already at root, drop ".." as if it were ".".
                else
                   Parted.Delete (I - 1);
                   I := I - 1;
@@ -185,23 +176,24 @@ package body Den is
                   --  At this point Head is absnormal, though may be a softlink
                   if Is_Softlink (Head) then
                      if Is_Broken (Head) then
-                        if not Can_Scrub (Target (Head)) then
-                           raise Bad_Path with
-                             "Target of " & Head
-                             & " is not a path: " & Target (Head);
+                        if Can_Scrub (Target (Head)) then
+                           Parted :=
+                             Parts (Parent (Head)) -- Parent of broken link
+                             & Parts (Scrub (Target (Head))) -- Link target
+                             & Ptail; -- Remainder
+                        else
+                           --  We cannot replace the link with its target, as
+                           --  it is a bad path, so simply leave as is.
+                           I := I + 1;
                         end if;
-
-                        Parted :=
-                          Parts (Parent (Head)) -- Parent of broken link
-                          & Parts (Scrub (Target (Head))) -- Link target
-                          & Ptail; -- Remainder
                      elsif Is_Recursive (Head) then
                         --  Leave as is
                         I := I + 1;
                      else -- Valid link
                         --  Substitute target plus tail
-                        Parted := Parts (Canonical (This)) & Ptail;
-                        I := Parted.First_Index;
+                        Parted := Parts (Canonical (Head)) & Ptail;
+                        --  No need to go over parts guaranteed to be good
+                        I := Integer (Parts (Canonical (Head)).Length) + 1;
                      end if;
                   else
                      --  Just move on to the next bit
@@ -325,8 +317,7 @@ package body Den is
          elsif Parted (I) = ".." then
             Parted.Delete (I);
             if I = Parted.First_Index then
-               raise Ada.Directories.Use_Error
-               with "Cannot remove parent when normalizing: " & This;
+               null; -- At root, drop as if it where "."
             else
                Parted.Delete (I - 1);
                I := I - 1;
@@ -354,10 +345,6 @@ package body Den is
       use type C_Strings.C.int;
       Bufsize : Integer := 32768; -- Theoretically, this is Windows max
    begin
-      if Trust_OS_Lib then
-         return OS.Normalize_Pathname (This);
-      end if;
-
       loop
          declare
             Cbuf : C_Strings.C_String := C_Strings.Buffer (Bufsize);
@@ -378,7 +365,7 @@ package body Den is
                when 1 .. C.int'Last =>
                   return "";
                when others =>
-                  raise Program_Error;
+                  raise Program_Error with "should be unreachable";
             end case;
          end;
       end loop;

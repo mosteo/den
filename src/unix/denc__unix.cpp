@@ -1,5 +1,7 @@
 #include "denc.h"
 
+#include <cstring>
+
 #if defined(__APPLE__)
     #include <sys/syslimits.h>
     #include <sys/stat.h>
@@ -23,15 +25,30 @@
 //  error
 extern "C" int c_canonical (const char *inputPath, char *fullPath, size_t bufsiz)
 {
-  // This function should never be called, so throw
-  throw "c_canonical() should never be called on unix platforms";
+    char *resolved = realpath (inputPath, NULL);
+
+    if (resolved == NULL)
+        return abs(errno);
+    else if (strlen(resolved) >= bufsiz) {
+        free(resolved);
+        return -1;
+    } else {
+        strcpy(fullPath, resolved);
+        free(resolved);
+    }
+
+    return 0;
 }
 
 //  True or false (nonzero or zero)
 extern "C" int c_is_softlink (const char *path)
 {
-  // This function should never be called, so throw
-  throw "c_is_softlink() should never be called on unix platforms";
+    struct stat sb;
+
+    if (lstat (path, &sb) == -1)
+        return 0;
+
+    return S_ISLNK (sb.st_mode);
 }
 
 

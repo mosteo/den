@@ -8,7 +8,7 @@ with Den.Walk;
 
 --  with GNAT.OS_Lib;
 
-procedure Selftest is
+procedure Den.Selftest is
    use Den;
    use Den.Walk;
    use Den.Operators;
@@ -37,6 +37,7 @@ procedure Selftest is
    --  runners they're created. Developer mode must be enabled in Windows.
    Supported : constant Boolean := Kind ("source") = Softlink;
    --  This is a link to "src"
+
 begin
    Put_Line ("Testing with Supported = " & Supported'Image);
 
@@ -86,9 +87,9 @@ begin
       --  Canonical path
       pragma Assert (R in Canonical_Path);
       pragma Assert (Root (CWD) in Canonical_Path);
-      pragma Assert (R / "asdf" in Canonical_Path);
-      pragma Assert (R / "." / "asdf" not in Canonical_Path);
-      pragma Assert (R / ".." / "asdf" not in Canonical_Path);
+      pragma Assert (R / "asdf" not in Canonical_Path); -- non-existing
+      pragma Assert (R / "." not in Canonical_Path);
+      pragma Assert (CWD / ".." not in Canonical_Path);
       pragma Assert -- middle path is softlink (i)
         ((Canonical ("..") / "example" / "cases" / "links" / "i" / "h"
           not in Canonical_Path) = Supported);
@@ -160,11 +161,8 @@ begin
       exception
          when others => null;
       end;
-      if Dir_Separator /= '\' then
-         pragma Assert (Canonizable ("..."));
-         pragma Assert (Canonical ("...") = CWD / "...");
-         --  Strange, but "..." is a valid filename (!) (not in Windows)
-      end if;
+      pragma Assert (not Canonizable ("not_a_real_file"));
+      --  Strange, but "..." is a valid filename (!) (not in Windows)
       pragma Assert (Canonizable (R / ".."));
       pragma Assert (Canonical (R / "..") = Root (CWD));
       --  Strange, but /.. is resolved to / by the OS (any excess .. I guess)
@@ -176,13 +174,6 @@ begin
                           Canonical (Cases) / "links" / "g" / "h" / "deep");
          pragma Assert (Canonical (Cases / "links" / "i" / "h") = -- mid dir
                           Canonical (Cases) / "links" / "g" / "h");
-         --  Broken links behave depending on OS, so guard
-         if Canonizable (Cases / "links" / "e") then
-            pragma Assert (Canonical (Cases / "links" / "e")
-                           = Canonical (Cases) / "links" / "missing");
-            pragma Assert (Canonical (Cases / "links" / "malformed")
-                           = Canonical (Cases) / "links" / "mal" / "formed");
-         end if;
       end if;
 
       --  Pseudocanonical
@@ -202,7 +193,17 @@ begin
          pragma Assert (not Canonizable (Cases / "links" / "d")); -- self
          pragma Assert (Pseudocanonical (Cases / "loops" / "d" / "what") -- mid
                         = Canonical (Cases) / "loops" / "d" / "what");
+         --  Broken links
+         pragma Assert (Pseudocanonical (Cases / "links" / "e")
+                        = Canonical (Cases) / "links" / "missing");
+         pragma Assert (Pseudocanonical (Cases / "links" / "malformed")
+                        = Canonical (Cases) / "links" / "mal" / "formed");
+         pragma Assert (Pseudocanonical (Cases / "links" / "i" / "what") -- mid
+                        = Canonical (Cases) / "links" / "g" / "what");
       end if;
+      --  With non-existing targets
+      pragma Assert (Pseudocanonical ("asdf") = CWD / "asdf");
+      pragma Assert (Pseudocanonical ("...") = CWD / "...");
 
       --  Absolute
       pragma Assert (Absolute (".") = CWD / ".");
@@ -358,4 +359,4 @@ begin
 
    pragma Assert (not Timed_Out, "Timed out");
 
-end Selftest;
+end Den.Selftest;

@@ -121,10 +121,16 @@ package Den is
 
    subtype Existing_Kinds is Kinds range Kinds'Succ (Nothing) .. Kinds'Last;
 
+   subtype Existing_Path is Path
+     with Dynamic_Predicate => Kind (Existing_Path) in Existing_Kinds;
+
    subtype Final_Kinds is Kinds
      with Static_Predicate => Final_Kinds /= Softlink;
 
    subtype Childless_Kinds is Kinds range File .. Special;
+
+   subtype Canonical_Kinds is Kinds with
+     Dynamic_Predicate => Canonical_Kinds not in Nothing | Softlink;
 
    function Explain (This : Path) return String;
    --  A string that may be useful while debugging, says the kind of This
@@ -136,8 +142,9 @@ package Den is
    is (Kind (This, Resolve_Links => True));
 
    function Is_Hard (This : Path) return Boolean
-   is ((for all A of Ancestors (This) => Kind (A) /= Softlink)
-       and then Kind (This) /= Softlink);
+   is ((for all A of Ancestors (This) => Kind (A) = Directory)
+       and then Kind (This) in Canonical_Kinds);
+   --  Note that a non-existing path maybe hard
 
    function Exists (This : Path; Resolve_Links : Boolean := False)
                     return Boolean
@@ -178,29 +185,30 @@ package Den is
       (Kind (This) /= Softlink or else
          not (Is_Broken (This) or else Is_Recursive (This))));
 
-   function Canonical (This : Path) return Canonical_Path;
-   --  May raise Bad_Path for broken/recursive links, as the resulting path
-   --  must not contain soft links. May also raise if too many ".." appear.
-   --  Note though, that for Kind (This) = Nothing, this can be made canonical
-   --  but will point to a non-existent item. Check out Pseudocanonical for
-   --  when a real, existing path is not mandatory.
+   function Canonical (This : Existing_Path) return Canonical_Path;
+   --  Returns the absolute hard path to This, which would be unique if
+   --  no hard links are involved. May raise Bad_Path for broken/recursive
+   --  links, as the resulting path must not contain soft links. Check out
+   --  Pseudocanonical for when a real, existing path is not mandatory.
 
    function Canonizable (This : String) return Boolean;
    --  Says if Canonical (This) will succeed.
 
-   function Pseudocanonical (This : Path) return String with
+   function Pseudocanonical (This : Path) return Absolute_Path with
      Post => (if Canonizable (This)
                 then Pseudocanonical'Result = Canonical (This));
    --  For broken links, the path will be canonical up to that point, with the
    --  link target appended. For recursive links, the path will be canonical
    --  and the simple name will remain the same. For paths with an intermediate
-   --  softlink, it will be resolved if not broken. Should never raise.
+   --  softlink, it will be resolved if resolvable. When there are too many
+   --  "..", they're dropped silently. If a broken link contains a string that
+   --  is an invalid path, the link will not be resolved. SHOULD NEVER RAISE.
 
    --  Both Canonical and Pseudocanonical are expensive as they can make
-   --  several system calls. For a cheaper alternative, when absolute
-   --  normal paths suffice, use Absnormal.
+   --  several system calls. For a cheaper alternative, when absolute normal
+   --  paths suffice, use Absnormal, which does the same but resolving links.
 
-   function Full (This : Path) return Canonical_Path renames Canonical;
+   function Full (This : Path) return Canonical_Path renames Pseudocanonical;
 
    function Name (This : Path) return Part
      with Post => (if Is_Root (This) then Name'Result = This);
@@ -249,8 +257,6 @@ package Den is
 
    end Operators;
 
-   function OS_Canonical (This : Path) return String;
-   --  The OS own canonicalization function
 private
 
    Dir_Separator : constant Character := GNAT.OS_Lib.Directory_Separator;
@@ -260,5 +266,11 @@ private
    function Is_Softlink (This : Path) return Boolean;
    --  Always false in platforms without softlink support. True even for broken
    --  links. False if This doesn't designate anything in the filesystem.
+
+   function OS_Canonical (This : Path) return String;
+   --  The OS own canonicalization function. Returns a canonical path if
+   --  This exists, or "" otherwise. This is not a "clever" function like
+   --  GNAT.OS_Lib.Normalize_Pathname or std::filesystem::weak_canonical.
+   --  To preserve cross-platform behavior, we do that in Pseudocanonical.
 
 end Den;
