@@ -232,14 +232,19 @@ package body Den is
    ----------
 
    function Name (This : Path) return Part
-   is (Dirs.Simple_Name (This));
+   is (Parts (This).Last_Element);
 
    ------------
    -- Parent --
    ------------
 
    function Parent (This : Path) return Path
-   is (Dirs.Containing_Directory (This));
+   is (if Is_Root (This) then
+          This
+       elsif This in Part then
+          raise Dirs.Use_Error with "Path has no parent: " & This
+       else
+          Parts (This).Up_To (Integer (Parts (This).Length) - 1).To_Path);
 
    -----------
    -- Parts --
