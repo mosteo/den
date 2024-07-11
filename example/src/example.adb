@@ -13,7 +13,7 @@ begin
    for Canon in Walk.Canonical_Parts'Range loop
       New_Line;
       Put_Line ("CASES (" & Canon'Image & "):");
-      for Item of Walk.Find ("cases",
+      for Item of Walk.Find ("../cases",
                             Options => (Canonicalize => Canon, others => <>))
       loop
          Put_Line (Item.Path & Explain (Item.Path));

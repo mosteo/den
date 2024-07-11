@@ -24,7 +24,7 @@ procedure Den.Selftest is
 
    function "+" (S : String) return String renames F;
 
-   Cases : constant Relative_Path := +"../example/cases";
+   Cases : constant Relative_Path := +"../cases";
    --  This path must be kept relative for some tests to be effective
 
    --  package Dirs renames Ada.Directories;
@@ -78,10 +78,10 @@ begin
       --  Hard path
       pragma Assert ("bin" in Hard_Path);
       pragma Assert -- name is softlink
-        ((Canonical ("..") / "example" / "cases" / "links" / "b"
+        ((Canonical ("..") / "cases" / "links" / "b"
           not in Hard_Path) = Supported);
       pragma Assert -- middle path is softlink (i)
-        ((Canonical ("..") / "example" / "cases" / "links" / "i" / "h"
+        ((Canonical ("..") / "cases" / "links" / "i" / "h"
          not in Hard_Path));
       --  If Supported, not because of softlink; otherwise not because
       --  non-existent.
@@ -93,7 +93,7 @@ begin
       pragma Assert (R / "." not in Canonical_Path);
       pragma Assert (CWD / ".." not in Canonical_Path);
       pragma Assert -- middle path is softlink (i)
-        ((Canonical ("..") / "example" / "cases" / "links" / "i" / "h"
+        ((Canonical ("..") / "cases" / "links" / "i" / "h"
          not in Canonical_Path));
       --  If Supported, not because of softlink; otherwise not because
       --  non-existent.
