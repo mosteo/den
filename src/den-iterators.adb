@@ -12,52 +12,59 @@ package body Den.Iterators is
    -------------
 
    function Iterate (This : Path) return Dir_Iterator is
-
-      function Iterate return Lists.List is
-
-         Dir : Ops.Dir_Type;
-         type Path_Access is access String; -- Predicate on Path gives trouble
-         procedure Free is
-           new Ada.Unchecked_Deallocation (String, Path_Access);
-
-         Last : Natural;
-         Max  : Positive := 1024;
-      begin
-         --  Try to read all dir elements; if insufficient buffer, try again.
-         --  Recursivity could be removed, but with exponential grow wo cares..
-
-         return Items : Lists.List do
-            loop
-               declare
-                  Item : Path_Access := new Path (1 .. Max);
-                  function Read return Path is (Item (1 .. Last)) with Inline;
-               begin
-                  Ops.Open (Dir, This);
-                  loop
-                     Ops.Read (Dir, Item.all, Last);
-
-                     if Last = 0 then
-                        Ops.Close (Dir);
-                        Free (Item);
-                        return;
-                     elsif Last = Item'Last then
-                        --  Too small, restart
-                        Items.Clear;
-                        Max := Max * 2;
-                        Ops.Close (Dir);
-                        Free (Item);
-                        exit;
-                     elsif Read /= "." and then Read /= ".." then
-                        Items.Append (Item (Item'First .. Last));
-                     end if;
-                  end loop;
-               end;
-            end loop;
-         end return;
-      end Iterate;
-
    begin
-      return Result : constant Dir_Iterator := (Items => Iterate);
+      return Result : Dir_Iterator do
+         declare
+            Items : Lists.List renames Result.Items;
+            --  This convoluted procedure-inside-return is both to work around
+            --  a bug in GNAT 13.2 from Ubuntu 22.04 and to avoid a copy of
+            --  these Items.
+
+            procedure Iterate is
+               Dir : Ops.Dir_Type;
+               type Path_Access is access String;
+               -- Predicate on Path gives trouble
+               procedure Free is
+                 new Ada.Unchecked_Deallocation (String, Path_Access);
+
+               Last  : Natural;
+               Max   : Positive := 1024;
+            begin
+               --  Try to read all dir elements; if insufficient buffer, try
+               --  again. Recursivity could be removed, but with exponential
+               --  grow wo cares..
+               loop
+                  declare
+                     Item : Path_Access := new Path (1 .. Max);
+                     function Read return Path is (Item (1 .. Last))
+                       with Inline;
+                  begin
+                     Ops.Open (Dir, This);
+                     loop
+                        Ops.Read (Dir, Item.all, Last);
+
+                        if Last = 0 then
+                           Ops.Close (Dir);
+                           Free (Item);
+                           return;
+                        elsif Last = Item'Last then
+                           --  Too small, restart
+                           Items.Clear;
+                           Max := Max * 2;
+                           Ops.Close (Dir);
+                           Free (Item);
+                           exit;
+                        elsif Read /= "." and then Read /= ".." then
+                           Items.Append (Item (Item'First .. Last));
+                        end if;
+                     end loop;
+                  end;
+               end loop;
+            end Iterate;
+         begin
+            Iterate;
+         end;
+      end return;
    end Iterate;
 
    -----------
