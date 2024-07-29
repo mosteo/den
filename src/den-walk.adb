@@ -1,5 +1,7 @@
 with Den.Iterators;
 
+--  with GNAT.IO; use GNAT.IO;
+
 package body Den.Walk is
 
    package OS renames GNAT.OS_Lib;

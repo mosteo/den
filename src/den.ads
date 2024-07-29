@@ -208,7 +208,8 @@ package Den is
    --  several system calls. For a cheaper alternative, when absolute normal
    --  paths suffice, use Absnormal, which does the same but resolving links.
 
-   function Full (This : Path) return Canonical_Path renames Pseudocanonical;
+   function Full (This : Path) return Absolute_Path renames Pseudocanonical;
+   function Full_Name (This : Path) return Absolute_Path renames Full;
 
    function Name (This : Path) return Part
      with Post => (if Is_Root (This) then Name'Result = This);

@@ -1,4 +1,4 @@
-#include "denc.h"
+#include "../denc.h"
 
 #include <cstdlib>
 #include <cstring>
