@@ -8,6 +8,7 @@ jobs:
         runs-on: ${{ matrix.os }}
 
         strategy:
+            fail-fast: false
             matrix:
                 os: [macos-12, ubuntu-latest, windows-latest]
                 v: [^10, ^11, ^12, ^13, ^14, ""]
@@ -30,3 +31,10 @@ jobs:
               shell: bash
               run: |
                   alr test && cat alire/*.log || { cat alire/*.log; exit 1; }
+
+            - name: Check for bug on Windows + GCC 14 + iostream
+              shell: bash
+              run: |
+                  cd selftest && \
+                  alr build && \
+                  bin/selftest

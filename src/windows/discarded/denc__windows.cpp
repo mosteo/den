@@ -1,8 +1,7 @@
 #include <cstdio>
-#include <stdexcept>
-#include <string>
-#include <vector>
 #include <windows.h>
+#include <iostream>
+#include <vector>
 
 #include "denc.h"
 
@@ -88,8 +87,7 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
             return 0;
         }
     } catch (const std::exception& e) {
-        // print to stderr
-        fprintf(stderr, "Error getting canonical path: %s\n", e.what());
+        std::cerr << "Error getting canonical path: " << e.what() << std::endl;
         return 1;
     }
 }

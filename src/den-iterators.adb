@@ -23,7 +23,7 @@ package body Den.Iterators is
             procedure Iterate is
                Dir : Ops.Dir_Type;
                type Path_Access is access String;
-               -- Predicate on Path gives trouble
+               --  Predicate on Path gives trouble
                procedure Free is
                  new Ada.Unchecked_Deallocation (String, Path_Access);
 
