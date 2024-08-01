@@ -2,7 +2,7 @@ with AAA.Strings;
 
 with GNAT.OS_Lib;
 
-package Den is
+package Den with Preelaborate is
 
    Bad_Operation : exception;
    --  Raised when some transformation between paths can be completed
@@ -12,10 +12,10 @@ package Den is
    --  conversions, or for any problematic path in general (e.g., C:\..\) if
    --  it has to be resolved.
 
-   Dir_Separator : constant Character;
+   function Dir_Separator return Character with Inline;
 
-   Parent_Dir    : constant String := "..";
-   Current_Dir   : constant String := ".";
+   Dots_Parent_Dir  : constant String := "..";
+   Dots_Current_Dir : constant String := ".";
 
    --  A raw, system-encoded path denoting a file or folder, but well-formed
    subtype Path is String
@@ -33,7 +33,7 @@ package Den is
      with Dynamic_Predicate =>
        GNAT.OS_Lib.Is_Absolute_Path (Absolute_Path);
 
-   Driveless_Root : constant Absolute_Path;
+   function Driveless_Root return Absolute_Path with Inline;
    --  The root of the filesystem in Unix-like (/), the current drive root (\)
    --  on Windows without the actual drive (\).
 
@@ -88,10 +88,8 @@ package Den is
    is (for all P of This => P in Part);
 
    subtype Relative_Parts is Part with Dynamic_Predicate =>
-     Relative_Parts = Parent_Dir or else Relative_Parts = Current_Dir;
-
-   function Absolute (This : Path) return Absolute_Path with
-     Post => (if Is_Absolute (This) then Absolute'Result = This);
+     Relative_Parts = Dots_Parent_Dir or else
+     Relative_Parts = Dots_Current_Dir;
 
    function Ancestors (This : Normal_Path) return Sorted_Paths;
    --  Returns all ancestors of this path, without canonicalizing it first.
@@ -109,9 +107,6 @@ package Den is
    --  Remove ".", ".." from path, but without first making it absolute, so it
    --  may raise even for valid relative paths. Use Normal (Absolute (This)) in
    --  such cases. Too many ".." (going "up" of root) will also raise.
-
-   function Absnormal (This : Path) return Absnormal_Path
-   is (Normal (Absolute (This)));
 
    type Kinds is
      (Nothing,   -- A path pointing nowhere valid
@@ -137,7 +132,7 @@ package Den is
    --  A string that may be useful while debugging, says the kind of This
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds;
-   --  May return Softlink for a self-referential link!
+   --  May return Softlink for a self-referential link even with Resolve_Links!
 
    function Target_Kind (This : Path) return Final_Kinds
    is (Kind (This, Resolve_Links => True));
@@ -190,27 +185,10 @@ package Den is
    --  Returns the absolute hard path to This, which would be unique if
    --  no hard links are involved. May raise Bad_Path for broken/recursive
    --  links, as the resulting path must not contain soft links. Check out
-   --  Pseudocanonical for when a real, existing path is not mandatory.
+   --  FS.Pseudocanonical for when a real, existing path is not mandatory.
 
    function Canonizable (This : String) return Boolean;
    --  Says if Canonical (This) will succeed.
-
-   function Pseudocanonical (This : Path) return Absolute_Path with
-     Post => (if Canonizable (This)
-                then Pseudocanonical'Result = Canonical (This));
-   --  For broken links, the path will be canonical up to that point, with the
-   --  link target appended. For recursive links, the path will be canonical
-   --  and the simple name will remain the same. For paths with an intermediate
-   --  softlink, it will be resolved if resolvable. When there are too many
-   --  "..", they're dropped silently. If a broken link contains a string that
-   --  is an invalid path, the link will not be resolved. SHOULD NEVER RAISE.
-
-   --  Both Canonical and Pseudocanonical are expensive as they can make
-   --  several system calls. For a cheaper alternative, when absolute normal
-   --  paths suffice, use Absnormal, which does the same but resolving links.
-
-   function Full (This : Path) return Absolute_Path renames Pseudocanonical;
-   function Full_Name (This : Path) return Absolute_Path renames Full;
 
    function Name (This : Path) return Part
      with Post => (if Is_Root (This) then Name'Result = This);
@@ -250,17 +228,6 @@ package Den is
    --  for that. Note that the result may be not a proper path, e.g. something
    --  like "mal//formed". Use Scrub to clean such things.
 
-   function Relative (From, Into : Path) return Path;
-   --  Try to find a relative path from From into Into; this may be impossible
-   --  on Windows for paths in different drive letters. From and Into are
-   --  Absnormalized prior to search. If no relative path can be found, an
-   --  absolute path to Into will be returned. TODO/WARNING: consider whether
-   --  the filesystem is case-insensitive or case-preserving. Currently no case
-   --  transformations will be applied and case-sensitive will be presumed.
-
-   function Current return Path;
-   function CWD return Path renames Current;
-
    package Operators is
 
       function "/" (L : Path; R : Relative_Path) return Path;
@@ -269,9 +236,17 @@ package Den is
 
 private
 
-   Dir_Separator : constant Character := GNAT.OS_Lib.Directory_Separator;
+   function Dir_Separator return Character
+   is (GNAT.OS_Lib.Directory_Separator);
 
-   Driveless_Root : constant Absolute_Path := "" & Dir_Separator;
+   function Driveless_Root return Absolute_Path is (1 => Dir_Separator);
+
+   function Eat_Dots (This   :        Path;
+                      Parted : in out Path_Parts;
+                      I      : in out Integer)
+                      return Boolean;
+   --  Removes only "." and ".." at pos I. Return True if something removed,
+   --  False otherwise. May raise Bad_Path
 
    function Is_Softlink (This : Path) return Boolean;
    --  Always false in platforms without softlink support. True even for broken

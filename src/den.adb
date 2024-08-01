@@ -1,11 +1,16 @@
-with Ada.Directories;
+--  with Ada.Directories;
+
+with Ada.IO_Exceptions;
 
 with C_Strings;
+
+with System;
 
 package body Den is
 
    package C renames C_Strings.C;
-   package Dirs renames Ada.Directories;
+   --  package Dirs renames Ada.Directories;
+   package IOex renames Ada.IO_Exceptions;
 
    ---------------
    -- Operators --
@@ -30,15 +35,6 @@ package body Den is
 
    function "/" (L : Path; R : Relative_Path) return Path
                  renames Operators."/";
-
-   --------------
-   -- Absolute --
-   --------------
-
-   function Absolute (This : Path) return Absolute_Path
-   is (if Is_Absolute (This)
-       then This
-       else Current / This);
 
    ---------------
    -- Ancestors --
@@ -144,8 +140,7 @@ package body Den is
    --------------
    -- Eat_Dots --
    --------------
-   --  Removes only "." and ".." at pos I. Return True if something removed,
-   --  False otherwise. May raise Bad_Path
+
    function Eat_Dots (This   :        Path;
                       Parted : in out Path_Parts;
                       I      : in out Integer)
@@ -171,83 +166,49 @@ package body Den is
       end if;
    end Eat_Dots;
 
-   ---------------------
-   -- Pseudocanonical --
-   ---------------------
-
-   function Pseudocanonical (This : Path) return Absolute_Path
-   is
-   begin
-      if Canonizable (This) then
-         return Canonical (This);
-      end if;
-
-      declare
-         Parted : Path_Parts := Parts (Absolute (This));
-         I      : Integer := Parted.First_Index;
-      begin
-         while I <= Parted.Last_Index loop
-            if Eat_Dots (This, Parted, I) then
-               null; -- Eat_Dots does what has to be done
-            else
-               declare
-                  Phead : constant Path_Parts    := Parted.Up_To (I);
-                  Head  : constant Absolute_Path := Phead.To_Path;
-                  Ptail : constant Path_Parts    := Parted.From (I + 1);
-               begin
-                  --  At this point Head is absnormal, though may be a softlink
-                  if Is_Softlink (Head) then
-                     if Is_Broken (Head) then
-                        if Can_Scrub (Target (Head)) then
-                           Parted :=
-                             Parts (Parent (Head)) -- Parent of broken link
-                             & Parts (Scrub (Target (Head))) -- Link target
-                             & Ptail; -- Remainder
-                        else
-                           --  We cannot replace the link with its target, as
-                           --  it is a bad path, so simply leave as is.
-                           I := I + 1;
-                        end if;
-                     elsif Is_Recursive (Head) then
-                        --  Leave as is
-                        I := I + 1;
-                     else -- Valid link
-                        --  Substitute target plus tail
-                        Parted := Parts (Canonical (Head)) & Ptail;
-                        --  No need to go over parts guaranteed to be good
-                        I := Integer (Parts (Canonical (Head)).Length) + 1;
-                     end if;
-                  else
-                     --  Just move on to the next bit
-                     I := I + 1;
-                  end if;
-               end;
-            end if;
-         end loop;
-
-         return Parted.To_Path;
-      end;
-   end Pseudocanonical;
-
    ----------
    -- Kind --
    ----------
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds
-   is (if Resolve_Links then
-         (if not Is_Resolvable (This) then
-               Softlink
-          else
-             Kind (Canonical (This), Resolve_Links => False))
-       elsif Is_Softlink (This) then
-          Softlink
-       elsif not Dirs.Exists (This) then
-          Nothing
-       else
-         (case Dirs.Kind (This) is
-             when Dirs.Directory     => Directory,
-             when Dirs.Ordinary_File => File,
-             when Dirs.Special_File  => Special));
+   is
+      -----------------
+      -- File_Exists --
+      -----------------
+      --  Original in a-direct.adb. We use this to avoid use of
+      --  non-preelaborable subprograms.
+      function File_Exists (Name : String) return Boolean is
+         function C_File_Exists (A : System.Address) return Integer;
+         pragma Import (C, C_File_Exists, "__gnat_file_exists");
+
+         C_Name : String (1 .. Name'Length + 1);
+
+      begin
+         C_Name (1 .. Name'Length) := Name;
+         C_Name (C_Name'Last) := ASCII.NUL;
+         return C_File_Exists (C_Name'Address) = 1;
+      end File_Exists;
+
+      package OS renames GNAT.OS_Lib;
+
+   begin
+      return
+        (if Resolve_Links then
+           (if not Is_Resolvable (This) then
+                 Softlink
+            else
+               Kind (Canonical (This), Resolve_Links => False))
+         elsif Is_Softlink (This) then
+            Softlink
+         elsif not File_Exists (This) then
+            Nothing
+         elsif OS.Is_Directory (This) then
+            Directory
+         elsif OS.Is_Regular_File (This) then
+            File
+         else
+            Special);
+   end Kind;
 
    ----------
    -- Name --
@@ -264,7 +225,7 @@ package body Den is
    is (if Is_Root (This) then
           This
        elsif This in Part then
-          raise Dirs.Use_Error with "Path has no parent: " & This
+          raise IOex.Use_Error with "Path has no parent: " & This
        else
           Parts (This).Up_To (Integer (Parts (This).Length) - 1).To_Path);
 
@@ -291,44 +252,6 @@ package body Den is
          end if;
       end return;
    end Parts;
-
-   --------------
-   -- Relative --
-   --------------
-
-   function Relative (From, Into : Path) return Path is
-      F : Path_Parts := Parts (Absnormal (From));
-      T : Path_Parts := Parts (Absnormal (Into));
-   begin
-      --  Trivial case: the same path
-      if F = T then
-         raise Bad_Operation with
-           "Both paths are the same in Relative_Path: "
-           & From & " --> " & Into;
-      end if;
-
-      --  If the first element is different, these are paths into different
-      --  drives:
-      if F.First_Element /= T.First_Element then
-         return Absnormal (Into);
-      end if;
-
-      --  Remove the common prefix
-      while F.First_Element = T.First_Element loop
-         F.Delete_First;
-         T.Delete_First;
-
-         exit when F.Is_Empty or else T.Is_Empty;
-      end loop;
-
-      --  The paths are now at their divergence point; we must ascend as many
-      --  times as parts remain in From.
-      for I in 1 .. F.Length loop
-         T.Prepend (Parent_Dir);
-      end loop;
-
-      return T.To_Path;
-   end Relative;
 
    -------------
    -- Resolve --
@@ -509,13 +432,6 @@ package body Den is
           when Nothing   => " (not found)",
           when Directory => "" & Dir_Separator,
           when File      => "");
-
-   -------------
-   -- Current --
-   -------------
-
-   function Current return Path
-   is (Dirs.Current_Directory);
 
    -----------
    -- Scrub --
