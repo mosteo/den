@@ -141,6 +141,36 @@ package body Den is
          return False;
    end Canonizable;
 
+   --------------
+   -- Eat_Dots --
+   --------------
+   --  Removes only "." and ".." at pos I. Return True if something removed,
+   --  False otherwise. May raise Bad_Path
+   function Eat_Dots (This   :        Path;
+                      Parted : in out Path_Parts;
+                      I      : in out Integer)
+                      return Boolean
+   is
+   begin
+      if Parted (I) = "." then
+         Parted.Delete (I);
+         return True;
+      elsif Parted (I) = ".." then
+         Parted.Delete (I);
+         if I = Parted.First_Index then
+            raise Bad_Path with
+              "Too many parents in path while normalizing: " & This;
+            --  At root, drop as if it where "."
+         else
+            Parted.Delete (I - 1);
+            I := I - 1;
+         end if;
+         return True;
+      else
+         return False;
+      end if;
+   end Eat_Dots;
+
    ---------------------
    -- Pseudocanonical --
    ---------------------
@@ -157,16 +187,8 @@ package body Den is
          I      : Integer := Parted.First_Index;
       begin
          while I <= Parted.Last_Index loop
-            if Parted (I) = "." then
-               Parted.Delete (I);
-            elsif Parted (I) = ".." then
-               Parted.Delete (I);
-               if I = Parted.First_Index then
-                  null; -- Already at root, drop ".." as if it were ".".
-               else
-                  Parted.Delete (I - 1);
-                  I := I - 1;
-               end if;
+            if Eat_Dots (This, Parted, I) then
+               null; -- Eat_Dots does what has to be done
             else
                declare
                   Phead : constant Path_Parts    := Parted.Up_To (I);
@@ -270,6 +292,44 @@ package body Den is
       end return;
    end Parts;
 
+   --------------
+   -- Relative --
+   --------------
+
+   function Relative (From, Into : Path) return Path is
+      F : Path_Parts := Parts (Absnormal (From));
+      T : Path_Parts := Parts (Absnormal (Into));
+   begin
+      --  Trivial case: the same path
+      if F = T then
+         raise Bad_Operation with
+           "Both paths are the same in Relative_Path: "
+           & From & " --> " & Into;
+      end if;
+
+      --  If the first element is different, these are paths into different
+      --  drives:
+      if F.First_Element /= T.First_Element then
+         return Absnormal (Into);
+      end if;
+
+      --  Remove the common prefix
+      while F.First_Element = T.First_Element loop
+         F.Delete_First;
+         T.Delete_First;
+
+         exit when F.Is_Empty or else T.Is_Empty;
+      end loop;
+
+      --  The paths are now at their divergence point; we must ascend as many
+      --  times as parts remain in From.
+      for I in 1 .. F.Length loop
+         T.Prepend (Parent_Dir);
+      end loop;
+
+      return T.To_Path;
+   end Relative;
+
    -------------
    -- Resolve --
    -------------
@@ -317,16 +377,8 @@ package body Den is
       I : Integer := Parted.First_Index;
    begin
       while I <= Parted.Last_Index loop
-         if Parted (I) = "." then
-            Parted.Delete (I);
-         elsif Parted (I) = ".." then
-            Parted.Delete (I);
-            if I = Parted.First_Index then
-               null; -- At root, drop as if it where "."
-            else
-               Parted.Delete (I - 1);
-               I := I - 1;
-            end if;
+         if Eat_Dots (This, Parted, I) then
+            null; -- Eat_Dots does what needs to be done
          else
             I := I + 1;
          end if;
@@ -470,6 +522,9 @@ package body Den is
    -----------
 
    function Scrub (This : String) return Path is
+      subtype LC_Drive is Character range 'a' .. 'z';
+      subtype UC_Drive is Character range 'A' .. 'Z';
+
       Bad_Sep : constant Character :=
                   (case Dir_Separator is
                       when '/' => '\',
@@ -477,22 +532,17 @@ package body Den is
                       when others =>
                         raise Program_Error with "Unsupported platform");
    begin
+      --  Empty string
       if This = "" then
          raise Bad_Path with "Bad path: (empty)";
       end if;
 
-      if This in Root_Path then
-         return This;
-      end if;
-
+      --  Mixed separators
       if (for some Char of This => Char = Bad_Sep) then
          return AAA.Strings.Replace (This, "" & Bad_Sep, "" & Dir_Separator);
       end if;
 
-      if This (This'Last) = Dir_Separator then
-         return Scrub (This (This'First .. This'Last - 1));
-      end if;
-
+      --  Duplicated separators
       for I in This'Range loop
          if I < This'Last then
             if This (I) = Dir_Separator and then This (I + 1) = Dir_Separator
@@ -502,6 +552,21 @@ package body Den is
             end if;
          end if;
       end loop;
+
+      --  Consistent drive letter
+      if This in Root_Path then
+         if This (This'First) in LC_Drive then
+            return Scrub (UC_Drive'Val (LC_Drive'Pos (This (This'First)))
+                          & This (This'First + 1 .. This'Last));
+         else
+            return This;
+         end if;
+      end if;
+
+      --  Closing separator for non-root paths
+      if This (This'Last) = Dir_Separator then
+         return Scrub (This (This'First .. This'Last - 1));
+      end if;
 
       if This in Path then
          return This;

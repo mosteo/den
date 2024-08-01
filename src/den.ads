@@ -4,12 +4,13 @@ with GNAT.OS_Lib;
 
 package Den is
 
+   Bad_Operation : exception;
+   --  Raised when some transformation between paths can be completed
+
    Bad_Path : exception;
    --  Raised when attempting to obtain a path from a plain string in some
-   --  conversions.
-
-   Unresolvable_Softlink : exception;
-   --  Raised by functions that require a valid target at some point
+   --  conversions, or for any problematic path in general (e.g., C:\..\) if
+   --  it has to be resolved.
 
    Dir_Separator : constant Character;
 
@@ -107,7 +108,7 @@ package Den is
    function Normal (This : Path) return Normal_Path;
    --  Remove ".", ".." from path, but without first making it absolute, so it
    --  may raise even for valid relative paths. Use Normal (Absolute (This)) in
-   --  such cases.
+   --  such cases. Too many ".." (going "up" of root) will also raise.
 
    function Absnormal (This : Path) return Absnormal_Path
    is (Normal (Absolute (This)));
@@ -248,6 +249,14 @@ package Den is
    --  that. The returned result is not normalized or resolved, use Full_Path
    --  for that. Note that the result may be not a proper path, e.g. something
    --  like "mal//formed". Use Scrub to clean such things.
+
+   function Relative (From, Into : Path) return Path;
+   --  Try to find a relative path from From into Into; this may be impossible
+   --  on Windows for paths in different drive letters. From and Into are
+   --  Absnormalized prior to search. If no relative path can be found, an
+   --  absolute path to Into will be returned. TODO/WARNING: consider whether
+   --  the filesystem is case-insensitive or case-preserving. Currently no case
+   --  transformations will be applied and case-sensitive will be presumed.
 
    function Current return Path;
    function CWD return Path renames Current;

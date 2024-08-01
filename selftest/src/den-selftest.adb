@@ -271,6 +271,15 @@ begin
          when others => null;
       end;
 
+      --  Relative
+      pragma Assert (Relative ("parent", +"parent/child") = "child");
+      pragma Assert (Relative ("parent", +"parent/child/grand") =
+                       +"child/grand");
+      pragma Assert (Relative (+"parent/child", "parent") = "..");
+      pragma Assert (Relative (+"parent/child/grand", "parent") = +"../..");
+      pragma Assert (Relative (+"common/left", +"common/right") =
+                       +"../right");
+
       --  Resolve
       if Supported then
          pragma Assert
