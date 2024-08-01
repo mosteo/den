@@ -3,6 +3,8 @@ with AAA.Strings; use AAA.Strings;
 with Ada.Containers;
 --  with Ada.Directories;
 with Ada.Text_IO; use Ada.Text_IO;
+
+with Den.Filesystem;
 with Den.Iterators;
 with Den.Walk;
 
@@ -10,8 +12,9 @@ with Den.Walk;
 
 procedure Den.Selftest is
    use Den;
-   use Den.Walk;
+   use Den.Filesystem;
    use Den.Operators;
+   use Den.Walk;
 
    use type Ada.Containers.Count_Type;
 
