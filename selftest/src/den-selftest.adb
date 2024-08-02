@@ -275,13 +275,16 @@ begin
       end;
 
       --  Relative
-      pragma Assert (Relative ("parent", +"parent/child") = "child");
-      pragma Assert (Relative ("parent", +"parent/child/grand") =
-                       +"child/grand");
-      pragma Assert (Relative (+"parent/child", "parent") = "..");
-      pragma Assert (Relative (+"parent/child/grand", "parent") = +"../..");
-      pragma Assert (Relative (+"common/left", +"common/right") =
-                       +"../right");
+      for Canon in Boolean'Range loop
+         pragma Assert (Relative ("parent", +"parent/child", Canon) = "child");
+         pragma Assert (Relative ("parent", +"parent/child/grand", Canon) =
+                        +"child/grand");
+         pragma Assert (Relative (+"parent/child", "parent", Canon) = "..");
+         pragma Assert (Relative (+"parent/child/grand", "parent", Canon) =
+                        +"../..");
+         pragma Assert (Relative (+"common/left", +"common/right", Canon) =
+                        +"../right");
+      end loop;
 
       --  Resolve
       if Supported then

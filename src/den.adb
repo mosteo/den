@@ -461,7 +461,11 @@ package body Den is
       --  Duplicated separators
       for I in This'Range loop
          if I < This'Last then
-            if This (I) = Dir_Separator and then This (I + 1) = Dir_Separator
+            if This (I) = Dir_Separator
+              and then This (I + 1) = Dir_Separator
+              and then
+                (I /= This'First or else Dir_Separator = '/')
+                --  On Windows, an initial '\\' is UNC marker that must be kept
             then
                return
                  Scrub (This (This'First .. I) & This (I + 2 .. This'Last));
