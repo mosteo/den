@@ -132,6 +132,26 @@ begin
       pragma Assert (".." in Relative_Parts);
       pragma Assert ("a" not in Relative_Parts);
 
+      --  Parts on Windows
+      if Den.Dir_Separator = '\' then
+         pragma Assert (Is_Absolute ("\\a"), "\\a not considered absolute?");
+         pragma Assert (Is_Root ("\\"));
+
+         pragma Assert (Parts ("\\") = Den.To_Vector ("\\"));
+         pragma Assert (Parts ("\\a") = Den.To_Vector ("\\").Append ("a"));
+         pragma Assert (Den.To_Vector ("\\").Append ("a").To_Path = "\\a");
+
+         Put_Line (Boolean'("\\?\" in Path)'Image);
+         Put_Line (Parts ("\\?\").Flatten (":"));
+         pragma Assert (Parts ("\\?\") = Den.To_Vector ("\\?\"));
+         pragma Assert (Parts ("\\?\a") = Den.To_Vector ("\\?\").Append ("a"));
+         pragma Assert (Den.To_Vector ("\\?\").Append ("a").To_Path = "\\?\a");
+
+         pragma Assert (Parts ("\\.\") = Den.To_Vector ("\\.\"));
+         pragma Assert (Parts ("\\.\a") = Den.To_Vector ("\\.\").Append ("a"));
+         pragma Assert (Den.To_Vector ("\\.\").Append ("a").To_Path = "\\.\a");
+      end if;
+
       --  Ancestry
       pragma Assert (Ancestors ("a").Is_Empty);
       pragma Assert (Ancestors (R / "a") = To_Set (R));
@@ -275,13 +295,16 @@ begin
       end;
 
       --  Relative
-      pragma Assert (Relative ("parent", +"parent/child") = "child");
-      pragma Assert (Relative ("parent", +"parent/child/grand") =
-                       +"child/grand");
-      pragma Assert (Relative (+"parent/child", "parent") = "..");
-      pragma Assert (Relative (+"parent/child/grand", "parent") = +"../..");
-      pragma Assert (Relative (+"common/left", +"common/right") =
-                       +"../right");
+      for Canon in Boolean'Range loop
+         pragma Assert (Relative ("parent", +"parent/child", Canon) = "child");
+         pragma Assert (Relative ("parent", +"parent/child/grand", Canon) =
+                        +"child/grand");
+         pragma Assert (Relative (+"parent/child", "parent", Canon) = "..");
+         pragma Assert (Relative (+"parent/child/grand", "parent", Canon) =
+                        +"../..");
+         pragma Assert (Relative (+"common/left", +"common/right", Canon) =
+                        +"../right");
+      end loop;
 
       --  Resolve
       if Supported then

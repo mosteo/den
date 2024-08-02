@@ -29,10 +29,13 @@ package Den.Filesystem is
    function Full (This : Path) return Absolute_Path renames Pseudocanonical;
    function Full_Name (This : Path) return Absolute_Path renames Full;
 
-   function Relative (From, Into : Path) return Path;
+   function Relative (From, Into   : Path;
+                      Canonicalize : Boolean := False)
+                      return Path;
    --  Try to find a relative path from From into Into; this may be impossible
    --  on Windows for paths in different drive letters. From and Into are
-   --  Absnormalized prior to search. If no relative path can be found, an
+   --  Absnormalized prior to search, unless Canonicalize, in which case
+   --  they're Pseudocanonicalized. If no relative path can be found, an
    --  absolute path to Into will be returned. TODO/WARNING: consider whether
    --  the filesystem is case-insensitive or case-preserving. Currently no case
    --  transformations will be applied and case-sensitive will be presumed.

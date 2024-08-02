@@ -84,9 +84,18 @@ package body Den.Filesystem is
    -- Relative --
    --------------
 
-   function Relative (From, Into : Path) return Path is
-      F : Path_Parts := Parts (Absnormal (From));
-      T : Path_Parts := Parts (Absnormal (Into));
+   function Relative (From, Into   : Path;
+                      Canonicalize : Boolean := False)
+                      return Path
+   is
+      F : Path_Parts := Parts
+        (if Canonicalize
+         then Pseudocanonical (From)
+         else Absnormal (From));
+      T : Path_Parts := Parts
+        (if Canonicalize
+         then Pseudocanonical (Into)
+         else Absnormal (Into));
    begin
       --  Trivial case: the same path
       if F = T then

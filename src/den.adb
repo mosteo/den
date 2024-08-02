@@ -71,6 +71,12 @@ package body Den is
            and then
              (This = "\"
               or else
+                 This = "\\" -- UNC format
+              or else
+                 This = "\\?\"
+              or else
+                 This = "\\.\"
+              or else
                 (This'Length = 3
                  and then This (This'Last - 1) = ':'
                  and then This (This'Last) = '\'
@@ -80,6 +86,14 @@ package body Den is
                  and then This (This'Last) = ':'
                  and then (This (This'First) in Drive_Letter))));
    end String_Is_Root;
+
+   function Is_Absolute (This : Path) return Boolean
+   is (GNAT.OS_Lib.Is_Absolute_Path (This)
+       or else
+         --  Special case of Network/UNC Windows paths
+         (Dir_Separator = '\' and then
+          This'Length >= 2 and then
+          This (This'First .. This'First + 1) = "\\"));
 
    -------------
    -- Is_Root --
@@ -239,16 +253,40 @@ package body Den is
          return To_Vector (This);
       end if;
 
-      return Result : Path_Parts := Split (This, Dir_Separator) do
-         --  Adjust the root if necessary
-         if Is_Absolute (This) then
-            declare
-               Replacement : constant Part :=
-                               Result (Result.First_Index) & Dir_Separator;
-            begin
-               Result.Delete_First;
-               Result.Prepend (Replacement);
-            end;
+      return Result : Path_Parts do
+         --  Special cases for Windows
+         if Dir_Separator = '\' then
+            if AAA.Strings.Has_Prefix (This, "\\?\") then
+               Result :=
+                 To_Vector ("\\?\")
+                 & Split (This (This'First + 4 .. This'Last), Dir_Separator);
+            elsif AAA.Strings.Has_Prefix (This, "\\.\") then
+               Result :=
+                 To_Vector ("\\.\")
+                 & Split (This (This'First + 4 .. This'Last), Dir_Separator);
+            elsif AAA.Strings.Has_Prefix (This, "\\") then
+               Result :=
+                 To_Vector ("\\")
+                 & Split (This (This'First + 2 .. This'Last), Dir_Separator);
+            else
+               Result := Split (This, Dir_Separator);
+
+               --  Adjust for drive letter
+               if Is_Absolute (This) then
+                  Result.Replace_Element
+                    (Result.First_Index,
+                     Result.First_Element & Dir_Separator);
+               end if;
+            end if;
+         else
+            --  Sane UNIX paths
+            if Is_Absolute (This) then
+               Result :=
+                 To_Vector ("" & Dir_Separator)
+                 & Split (This (This'First + 1 .. This'Last), Dir_Separator);
+            else
+               Result := Split (This, Dir_Separator);
+            end if;
          end if;
       end return;
    end Parts;
@@ -461,7 +499,11 @@ package body Den is
       --  Duplicated separators
       for I in This'Range loop
          if I < This'Last then
-            if This (I) = Dir_Separator and then This (I + 1) = Dir_Separator
+            if This (I) = Dir_Separator
+              and then This (I + 1) = Dir_Separator
+              and then
+                (I /= This'First or else Dir_Separator = '/')
+                --  On Windows, an initial '\\' is UNC marker that must be kept
             then
                return
                  Scrub (This (This'First .. I) & This (I + 2 .. This'Last));
@@ -500,8 +542,10 @@ package body Den is
    function To_Path (This : Path_Parts) return String
    is (if This.Is_Empty
        then ""
-       else Scrub (This.Flatten (Dir_Separator)));
-   --  Could be made more efficient. The issue now is that flattening an
-   --  absolute path will result in things like "//home", "c:\\home", etc
+       elsif Is_Root (This.First_Element) -- Already includes dir separator
+       then This.First_Element
+            & This.Slice (This.First_Index + 1, This.Last_Index)
+                  .Flatten (Dir_Separator)
+       else This.Flatten (Dir_Separator));
 
 end Den;
