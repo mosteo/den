@@ -26,8 +26,9 @@ package Den with Preelaborate is
      and then (for all I in Path'Range =>
                  (if I < Path'Last then
                       Path (I) /= Dir_Separator
-                      or else Path (I + 1) /= Dir_Separator));
-   --  not containing consecutive separators
+                      or else Path (I + 1) /= Dir_Separator
+                      or else (Dir_Separator = '\' and then I = Path'First)));
+   --  not containing consecutive separators, except on Windows for net paths
 
    subtype Absolute_Path is Path
      with Dynamic_Predicate =>
@@ -149,8 +150,7 @@ package Den with Preelaborate is
    function Target_Exists (This : Path) return Boolean
    is (Exists (This, Resolve_Links => True));
 
-   function Is_Absolute (This : Path) return Boolean
-                         renames GNAT.OS_Lib.Is_Absolute_Path;
+   function Is_Absolute (This : Path) return Boolean;
 
    function String_Is_Root (This : String) return Boolean;
    --  Used to break recursion among predicates

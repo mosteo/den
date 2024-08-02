@@ -132,6 +132,26 @@ begin
       pragma Assert (".." in Relative_Parts);
       pragma Assert ("a" not in Relative_Parts);
 
+      --  Parts on Windows
+      if Den.Dir_Separator = '\' then
+         pragma Assert (Is_Absolute ("\\a"), "\\a not considered absolute?");
+         pragma Assert (Is_Root ("\\"));
+
+         pragma Assert (Parts ("\\") = Den.To_Vector ("\\"));
+         pragma Assert (Parts ("\\a") = Den.To_Vector ("\\").Append ("a"));
+         pragma Assert (Den.To_Vector ("\\").Append ("a").To_Path = "\\a");
+
+         Put_Line (Boolean'("\\?\" in Path)'Image);
+         Put_Line (Parts ("\\?\").Flatten (":"));
+         pragma Assert (Parts ("\\?\") = Den.To_Vector ("\\?\"));
+         pragma Assert (Parts ("\\?\a") = Den.To_Vector ("\\?\").Append ("a"));
+         pragma Assert (Den.To_Vector ("\\?\").Append ("a").To_Path = "\\?\a");
+
+         pragma Assert (Parts ("\\.\") = Den.To_Vector ("\\.\"));
+         pragma Assert (Parts ("\\.\a") = Den.To_Vector ("\\.\").Append ("a"));
+         pragma Assert (Den.To_Vector ("\\.\").Append ("a").To_Path = "\\.\a");
+      end if;
+
       --  Ancestry
       pragma Assert (Ancestors ("a").Is_Empty);
       pragma Assert (Ancestors (R / "a") = To_Set (R));
