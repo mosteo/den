@@ -4,6 +4,7 @@ with Ada.Containers;
 --  with Ada.Directories;
 with Ada.Text_IO; use Ada.Text_IO;
 
+with Den.Du;
 with Den.Filesystem;
 with Den.Iterators;
 with Den.Walk;
@@ -394,6 +395,22 @@ begin
       --  TODO: we should have some exact comparisons of output traversals with
       --  all the Find options combinations. Lotsa work...
       Put_Line ("OK find");
+
+      declare
+         package Du is new Den.Du;
+         use type Du.Sizes;
+         Root : constant Du.Tree := Du.List (".." / "cases");
+      begin
+         --  Minimal check that listing happens and finds some size and it is
+         --  not confused by bad links.
+         pragma Assert (Root.First_Element.Tree_Size > 0);
+         --  Also check the number of children is correct.
+         pragma Assert (Root.Length in 1);
+         pragma Assert (Du.Item (Root.First_Element).Children.Length in 2,
+                        Du.Item (Root.First_Element).Children.Length'Image);
+         --  Tnis number may change if items are added to the crate root!
+      end;
+      Put_Line ("OK du");
 
       Timed_Out := False;
    end select;
