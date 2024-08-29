@@ -1,4 +1,5 @@
 with Ada.Directories;
+with Ada.IO_Exceptions; use Ada.IO_Exceptions;
 
 package body Den.Filesystem is
 
@@ -14,6 +15,86 @@ package body Den.Filesystem is
    is (if Is_Absolute (This)
        then This
        else Current_Dir / This);
+
+   ----------
+   -- Copy --
+   ----------
+
+   procedure Copy (Src, Dst : Path;
+                   Options  : Copy_Options := (others => <>))
+   is
+
+      ---------------
+      -- Copy_File --
+      ---------------
+
+      procedure Copy_File is
+      begin
+         case Kind (Dst) is
+            when Nothing | Directory =>
+               Dirs.Copy_File (Src, Dst);
+            when File =>
+               if Options.Overwrite_Files then
+                  Dirs.Delete_File (Dst);
+                  Copy_File;
+               else
+                  raise Use_Error with
+                    "Den.Fs.Copy: not overwriting exising target: " & Dst;
+               end if;
+            when others =>
+               raise Program_Error with "unimplemented";
+         end case;
+      end Copy_File;
+
+      --------------
+      -- Copy_Dir --
+      --------------
+
+      procedure Copy_Dir is
+      begin
+         case Kind (Dst) is
+            when Nothing =>
+               raise Name_Error with
+                 "Den.Fs.Copy.Copy_Dir: non-existent destination: " & Dst;
+            when File | Softlink | Special =>
+               raise Program_Error with "unimplemented";
+            when Directory =>
+               raise Program_Error with "unimplemented";
+         end case;
+      end Copy_Dir;
+
+      ---------------
+      -- Copy_Link --
+      ---------------
+
+      procedure Copy_Link is
+      begin
+         raise Program_Error with "unimplemented";
+      end Copy_Link;
+
+      ------------------
+      -- Copy_Special --
+      ------------------
+
+      procedure Copy_Special is
+      begin
+         raise Program_Error with "Den.Fs.Copy.Copy_Special unimplemented";
+      end Copy_Special;
+
+   begin
+      case Kind (Src) is
+         when Nothing =>
+            raise Name_Error with "Den.Fs.Copy: non-existent source: " & Src;
+         when File =>
+            Copy_File;
+         when Directory =>
+            Copy_Dir;
+         when Softlink =>
+            Copy_Link;
+         when Special =>
+            Copy_Special;
+      end case;
+   end Copy;
 
    -----------------
    -- Current_Dir --

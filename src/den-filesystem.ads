@@ -9,6 +9,17 @@ package Den.Filesystem is
    function Absnormal (This : Path) return Absnormal_Path
    is (Normal (Absolute (This)));
 
+   type Copy_Options is record
+      Overwrite_Files : Boolean := False; -- When dst is a file
+      Merge_Dirs      : Boolean := False; -- When both src/dst are dirs
+      Resolve_Links   : Boolean := False; -- Copy target instead of link
+   end record;
+
+   procedure Copy (Src, Dst : Path;
+                   Options  : Copy_Options := (others => <>));
+   --  Make a copy of a file/dir/link. For dirs, this acts as rsync when paths
+   --  end in '/' (this is also rclone behavior).
+
    function Current_Dir return Path;
    function CWD         return Path renames Current_Dir;
 
