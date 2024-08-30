@@ -81,3 +81,9 @@ extern "C" int c_link_target (const char *path, char *buf, size_t bufsiz) {
     buf[nbytes] = '\0';
     return 0;
 }
+
+extern "C"
+int c_copy_link (const char *target, const char *name)
+{
+    return symlink(target, name);
+}

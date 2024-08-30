@@ -13,3 +13,6 @@ extern "C" int c_link_len(const char *path);
 
 // Returns 0 on success, -1 on not enough buffer, or positive error code on failure
 extern "C" int c_link_target(const char *path, char *buf, size_t bufsiz);
+
+// Returns 0 on success, any other for error
+extern "C" int c_copy_link(const char *target, const char *name);

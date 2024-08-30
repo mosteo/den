@@ -1,11 +1,22 @@
 with Ada.Directories;
 with Ada.IO_Exceptions; use Ada.IO_Exceptions;
 
+with C_Strings;
+
+with GNAT.Source_Info; use GNAT.Source_Info;
+
 package body Den.Filesystem is
 
    package Dirs renames Ada.Directories;
 
    use Den.Operators;
+
+   -----------
+   -- Error --
+   -----------
+
+   function Error (Info : String) return String
+   is (Enclosing_Entity & ": " & Info);
 
    --------------
    -- Absolute --
@@ -39,7 +50,7 @@ package body Den.Filesystem is
                   Copy_File;
                else
                   raise Use_Error with
-                    "Den.Fs.Copy: not overwriting exising target: " & Dst;
+                    Error ("not overwriting exising target: " & Dst);
                end if;
             when others =>
                raise Program_Error with "unimplemented";
@@ -55,7 +66,7 @@ package body Den.Filesystem is
          case Kind (Dst) is
             when Nothing =>
                raise Name_Error with
-                 "Den.Fs.Copy.Copy_Dir: non-existent destination: " & Dst;
+                 Error ("non-existent destination: " & Dst);
             when File | Softlink | Special =>
                raise Program_Error with "unimplemented";
             when Directory =>
@@ -68,8 +79,23 @@ package body Den.Filesystem is
       ---------------
 
       procedure Copy_Link is
+         function C_Copy_Link (Target, Name : C_Strings.Chars_Ptr)
+                               return C_Strings.C.int
+           with Import, Convention => C;
+         use C_Strings;
+
+         Result : constant Integer :=
+                    Integer
+                      (C_Copy_Link
+                         (To_C (Target (Src)).To_Ptr,
+                          To_C (Dst).To_Ptr));
       begin
-         raise Program_Error with "unimplemented";
+         if Result /= 0 then
+            raise Use_Error
+              with Error ("cannot create softlink "
+                          & Dst & " --> " & Target (Src)
+                          & " (error: " & Result'Image & ")");
+         end if;
       end Copy_Link;
 
       ------------------
@@ -78,13 +104,13 @@ package body Den.Filesystem is
 
       procedure Copy_Special is
       begin
-         raise Program_Error with "Den.Fs.Copy.Copy_Special unimplemented";
+         raise Program_Error with Error ("unimplemented");
       end Copy_Special;
 
    begin
       case Kind (Src) is
          when Nothing =>
-            raise Name_Error with "Den.Fs.Copy: non-existent source: " & Src;
+            raise Name_Error with Error ("non-existent source: " & Src);
          when File =>
             Copy_File;
          when Directory =>
@@ -95,6 +121,37 @@ package body Den.Filesystem is
             Copy_Special;
       end case;
    end Copy;
+
+   ----------------------
+   -- Create_Directory --
+   ----------------------
+
+   procedure Create_Directory
+     (Target           : Path;
+      Options          : Create_Directory_Options := (others => <>))
+   is
+   begin
+      case Target_Kind (Target) is
+         when Directory =>
+            if Options.Fail_If_Existing then
+               raise Use_Error
+                 with Error ("target exists: " & Target);
+            else
+               return;
+            end if;
+         when Nothing =>
+            if Options.Create_Intermediate then
+               Dirs.Create_Path (Target);
+            else
+               Dirs.Create_Directory (Target);
+            end if;
+         when others =>
+            raise Use_Error
+              with Error ("target ("
+                          & Target_Kind (Target)'Image & ") exists: "
+                          & Target);
+      end case;
+   end Create_Directory;
 
    -----------------
    -- Current_Dir --

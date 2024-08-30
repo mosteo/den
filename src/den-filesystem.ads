@@ -20,8 +20,18 @@ package Den.Filesystem is
    --  Make a copy of a file/dir/link. For dirs, this acts as rsync when paths
    --  end in '/' (this is also rclone behavior).
 
-   function Current_Dir return Path;
-   function CWD         return Path renames Current_Dir;
+   type Create_Directory_Options is record
+      Fail_If_Existing    : Boolean := False;
+      Create_Intermediate : Boolean := False; -- like mkdir -p
+   end record;
+
+   procedure Create_Directory
+     (Target           : Path;
+      Options          : Create_Directory_Options := (others => <>));
+
+   function Current_Dir       return Path;
+   function Current_Directory return Path renames Current_Dir;
+   function CWD               return Path renames Current_Dir;
 
    function Pseudocanonical (This : Path) return Absolute_Path with
      Post => (if Canonizable (This)
