@@ -7,13 +7,13 @@ with Den.Iterators;
 with Den.Walk;
 
 with GNAT.IO;
-with GNAT.OS_Lib;
+--  with GNAT.OS_Lib;
 with GNAT.Source_Info; use GNAT.Source_Info;
 
 package body Den.Filesystem is
 
    package Dirs renames Ada.Directories;
-   package OS   renames GNAT.OS_Lib;
+   --  package OS   renames GNAT.OS_Lib;
 
    use Den.Operators;
 
@@ -290,10 +290,12 @@ package body Den.Filesystem is
             Dirs.Delete_File (This);
          when Softlink =>
             declare
-               OK : Boolean := False;
+               use C_Strings;
+               function C_Delete_Link (Target : C_Strings.Chars_Ptr)
+                                       return C_Strings.C.int
+                 with Import, Convention => C;
             begin
-               OS.Delete_File (This, OK); -- Uses unlink under the hood
-               if not OK then
+               if C_Delete_Link (To_C (This).To_Ptr) not in 0 then
                   raise Use_Error with
                   Error ("failed to delete: " & This & P (Kind (This)'Image));
                end if;

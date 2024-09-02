@@ -213,3 +213,34 @@ c_copy_link (const char *target, const char *name)
     // Return 0 on success, -1 on failure to match Unix symlink() behavior
     return (result == TRUE) ? 0 : -1;
 }
+
+extern "C" int
+c_delete_link (const char *path)
+{
+    // Use RemoveDirectoryA for directory symlinks and DeleteFileA for file
+    // symlinks
+
+    DWORD attrs = GetFileAttributesA(path);
+    if (attrs == INVALID_FILE_ATTRIBUTES)
+    {
+        return -1; // Error: file/directory not found
+    }
+
+    // Check if it's a reparse point (which includes symlinks)
+    if (!(attrs & FILE_ATTRIBUTE_REPARSE_POINT))
+    {
+        return -1; // Error: not a symlink
+    }
+
+    BOOL result;
+    if (attrs & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        result = RemoveDirectoryA(path);
+    }
+    else
+    {
+        result = DeleteFileA(path);
+    }
+
+    return (result != 0) ? 0 : -1;
+}

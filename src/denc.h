@@ -15,4 +15,7 @@ extern "C" int c_link_len(const char *path);
 extern "C" int c_link_target(const char *path, char *buf, size_t bufsiz);
 
 // Returns 0 on success, any other for error
-extern "C" int c_copy_link(const char *target, const char *name);
+extern "C" int c_copy_link (const char *target, const char *name);
+
+// Returns 0 on success, any other for error
+extern "C" int c_delete_link (const char *path);
