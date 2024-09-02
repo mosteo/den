@@ -208,8 +208,13 @@ package body Den is
    begin
       return
         (if Resolve_Links then
-           (if not Is_Resolvable (This) then
-                 Softlink
+           (if Kind (This) = Nothing then
+                 Nothing
+            elsif not Is_Resolvable (This) then
+                (if Is_Broken (This) then
+                    Nothing
+                 else
+                    Softlink)
             else
                Kind (Canonical (This), Resolve_Links => False))
          elsif Is_Softlink (This) then

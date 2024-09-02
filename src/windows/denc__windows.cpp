@@ -193,3 +193,54 @@ extern "C" int c_link_target(const char *path, char *buf, size_t bufsiz) {
     buf[targetLength] = '\0';  // Null-terminate the string
     return 0;  // Success
 }
+
+extern "C" int
+c_copy_link (const char *target, const char *name)
+{
+    DWORD flags = 0;
+
+    // We must explicitly mark as directory if source link is one
+    if (GetFileAttributesA(target) & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+    }
+
+    // Use the newer version that allows unprivileged users to create symlinks
+    flags |= SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+
+    BOOLEAN result = CreateSymbolicLinkA(name, target, flags);
+
+    // Return 0 on success, -1 on failure to match Unix symlink() behavior
+    return (result == TRUE) ? 0 : -1;
+}
+
+extern "C" int
+c_delete_link (const char *path)
+{
+    // Use RemoveDirectoryA for directory symlinks and DeleteFileA for file
+    // symlinks
+
+    DWORD attrs = GetFileAttributesA(path);
+    if (attrs == INVALID_FILE_ATTRIBUTES)
+    {
+        return -1; // Error: file/directory not found
+    }
+
+    // Check if it's a reparse point (which includes symlinks)
+    if (!(attrs & FILE_ATTRIBUTE_REPARSE_POINT))
+    {
+        return -1; // Error: not a symlink
+    }
+
+    BOOL result;
+    if (attrs & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        result = RemoveDirectoryA(path);
+    }
+    else
+    {
+        result = DeleteFileA(path);
+    }
+
+    return (result != 0) ? 0 : -1;
+}

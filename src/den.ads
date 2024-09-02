@@ -135,8 +135,9 @@ package Den with Preelaborate is
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds;
    --  May return Softlink for a self-referential link even with Resolve_Links!
 
-   function Target_Kind (This : Path) return Final_Kinds
+   function Target_Kind (This : Path) return Kinds
    is (Kind (This, Resolve_Links => True));
+   --  May still return softlink if the softlink is unresolvable
 
    function Is_Hard (This : Path) return Boolean
    is ((for all A of Ancestors (This) => Kind (A) = Directory)
@@ -235,6 +236,14 @@ package Den with Preelaborate is
    end Operators;
 
 private
+
+   Debug : constant Boolean := False;
+
+   -------
+   -- P --
+   -------
+
+   function P (S : String) return String is (" (" & S & ") ");
 
    function Dir_Separator return Character
    is (GNAT.OS_Lib.Directory_Separator);

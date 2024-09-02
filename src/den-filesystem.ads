@@ -9,8 +9,50 @@ package Den.Filesystem is
    function Absnormal (This : Path) return Absnormal_Path
    is (Normal (Absolute (This)));
 
-   function Current_Dir return Path;
-   function CWD         return Path renames Current_Dir;
+   type Copy_Options is record
+      Overwrite_Files : Boolean := False; -- When dst is a file
+      Merge_Dirs      : Boolean := False; -- When both src/dst are dirs
+      Resolve_Links   : Boolean := False; -- Copy target instead of link
+   end record;
+
+   procedure Copy (Src, Dst : Path;
+                   Options  : Copy_Options := (others => <>));
+   --  Make a copy of a file/dir/link. For dirs, this acts as rsync when paths
+   --  end in '/' (this is also rclone behavior).
+
+   type Create_Directory_Options is record
+      Fail_If_Existing    : Boolean := False;
+      Create_Intermediate : Boolean := False; -- like mkdir -p
+   end record;
+
+   procedure Create_Directory
+     (Target           : Path;
+      Options          : Create_Directory_Options := (others => <>));
+
+   procedure Mkdir
+     (Target           : Path;
+      Options          : Create_Directory_Options := (others => <>))
+      renames Create_Directory;
+
+   function Current_Dir       return Path;
+   function Current_Directory return Path renames Current_Dir;
+   function CWD               return Path renames Current_Dir;
+
+   type Delete_Directory_Options is record
+      Recursive : Boolean := False;
+   end record;
+
+   procedure Delete_Directory
+     (This : Path;
+      Options : Delete_Directory_Options := (others => <>));
+
+   procedure Rmdir
+     (This    : Path;
+      Options : Delete_Directory_Options := (others => <>))
+      renames Delete_Directory;
+
+   procedure Delete_Tree (This : Path);
+   --  Recursive deletion
 
    function Pseudocanonical (This : Path) return Absolute_Path with
      Post => (if Canonizable (This)

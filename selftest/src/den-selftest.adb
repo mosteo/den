@@ -19,6 +19,8 @@ procedure Den.Selftest is
 
    use type Ada.Containers.Count_Type;
 
+   --  package Adirs renames Ada.Directories;
+
    R : constant Path := Driveless_Root;
 
    function F (S : String) return String
@@ -414,6 +416,29 @@ begin
 
       Timed_Out := False;
    end select;
+
+   --  COPY
+
+   if Kind ("cases") = Directory then
+      Delete_Tree ("cases");
+   end if;
+   Mkdir ("cases");
+   Copy (Cases, "cases");
+   for Item of Walk.Find ("cases") loop
+      declare
+         Src : constant Path := Item.Path;
+         Dst : constant Path := ".." / Item.Path;
+      begin
+         pragma Assert
+           (Kind (Src) = Kind (Dst),
+            "item mismatch: " & Src
+            & " (" & Kind (Src)'Image & ") /= "
+            & Dst
+            & " (" & Kind (Dst)'Image & ")");
+      end;
+   end loop;
+   Delete_Tree ("cases");
+   Put_Line ("OK copy");
 
    pragma Assert (not Timed_Out, "Timed out");
 
