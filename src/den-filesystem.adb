@@ -3,6 +3,10 @@ with Ada.IO_Exceptions; use Ada.IO_Exceptions;
 
 with C_Strings;
 
+with Den.Iterators;
+with Den.Walk;
+
+with GNAT.IO;
 with GNAT.Source_Info; use GNAT.Source_Info;
 
 package body Den.Filesystem is
@@ -11,12 +15,27 @@ package body Den.Filesystem is
 
    use Den.Operators;
 
+   ---------
+   -- Log --
+   ---------
+
+   procedure Log (Message  : String;
+                  Location : String := Source_Location)
+   is
+   begin
+      if Debug then
+         GNAT.IO.Put_Line ("[DEN] " & Location & ": " & Message);
+      end if;
+   end Log;
+
    -----------
    -- Error --
    -----------
 
-   function Error (Info : String) return String
-   is (Enclosing_Entity & ": " & Info);
+   function Error (Info     : String;
+                   Location : String := Source_Location)
+                   return String
+   is (Location & ": " & Info);
 
    --------------
    -- Absolute --
@@ -42,8 +61,10 @@ package body Den.Filesystem is
       procedure Copy_File is
       begin
          case Kind (Dst) is
-            when Nothing | Directory =>
+            when Nothing =>
                Dirs.Copy_File (Src, Dst);
+            when Directory =>
+               Dirs.Copy_File (Src, Dst / Name (Src));
             when File =>
                if Options.Overwrite_Files then
                   Dirs.Delete_File (Dst);
@@ -52,8 +73,10 @@ package body Den.Filesystem is
                   raise Use_Error with
                     Error ("not overwriting exising target: " & Dst);
                end if;
-            when others =>
-               raise Program_Error with "unimplemented";
+            when Softlink | Special =>
+               raise Use_Error with
+                 Error ("not overwriting existing link/special target: "
+                        & Dst);
          end case;
       end Copy_File;
 
@@ -68,10 +91,36 @@ package body Den.Filesystem is
                raise Name_Error with
                  Error ("non-existent destination: " & Dst);
             when File | Softlink | Special =>
-               raise Program_Error with "unimplemented";
+               raise Use_Error with
+                 Error ("not overwriting existing target (" & Kind (Dst)'Image
+                        & "): " & Dst);
             when Directory =>
-               raise Program_Error with "unimplemented";
+               if not Options.Merge_Dirs and then
+                 Walk.Ls (Dst).Length not in 0
+               then
+                  raise Use_Error with
+                    Error ("not merging (disabled) into existing target: "
+                           & Dst);
+               end if;
          end case;
+
+         --  Actually copy/merge
+
+         for Item of Iterators.Iterate (Src) loop
+            case Kind (Src / Item) is
+               when Nothing =>
+                  raise Program_Error with Error ("item missing?: "
+                                                  & (Src / Item));
+               when Directory =>
+                  if Kind (Dst / Item) = Nothing then
+                     Dirs.Create_Directory (Dst / Item);
+                  end if;
+                  Copy (Src / Item, Dst / Item);
+
+               when others =>
+                  Copy (Src / Item, Dst);
+            end case;
+         end loop;
       end Copy_Dir;
 
       ---------------
@@ -83,19 +132,42 @@ package body Den.Filesystem is
                                return C_Strings.C.int
            with Import, Convention => C;
          use C_Strings;
-
-         Result : constant Integer :=
-                    Integer
-                      (C_Copy_Link
-                         (To_C (Target (Src)).To_Ptr,
-                          To_C (Dst).To_Ptr));
       begin
-         if Result /= 0 then
-            raise Use_Error
-              with Error ("cannot create softlink "
-                          & Dst & " --> " & Target (Src)
-                          & " (error: " & Result'Image & ")");
-         end if;
+         case Kind (Dst) is
+            when Nothing =>
+               null;
+            when Directory =>
+               Copy (Src, Dst / Name (Src));
+               return;
+            when File =>
+               if Options.Overwrite_Files then
+                  Dirs.Delete_File (Dst);
+               else
+                  raise Use_Error with
+                  Error ("not overwriting exising target: " & Dst);
+               end if;
+            when Softlink | Special =>
+               raise Use_Error with
+                 Error ("not overwriting existing link/special target: "
+                        & Dst);
+         end case;
+
+         --  Here we must copy
+
+         declare
+            Result : constant Integer :=
+                       Integer
+                         (C_Copy_Link
+                            (To_C (Target (Src)).To_Ptr,
+                             To_C (Dst).To_Ptr));
+         begin
+            if Result /= 0 then
+               raise Use_Error
+                 with Error ("cannot create softlink "
+                             & Dst & " --> " & Target (Src)
+                             & " (error: " & Result'Image & ")");
+            end if;
+         end;
       end Copy_Link;
 
       ------------------
@@ -104,10 +176,13 @@ package body Den.Filesystem is
 
       procedure Copy_Special is
       begin
-         raise Program_Error with Error ("unimplemented");
+         raise Use_Error with Error ("cannot copy special file: " & Src);
       end Copy_Special;
-
    begin
+      Log ("Copy " & Src & P (Kind (Src)'Image)
+           & " --> "
+           & Dst & P (Kind (Dst)'Image) & " ...");
+
       case Kind (Src) is
          when Nothing =>
             raise Name_Error with Error ("non-existent source: " & Src);
@@ -116,10 +191,18 @@ package body Den.Filesystem is
          when Directory =>
             Copy_Dir;
          when Softlink =>
-            Copy_Link;
+            if Options.Resolve_Links and then Is_Resolvable (Src) then
+               Copy (Target (Src), Dst);
+            else
+               Copy_Link;
+            end if;
          when Special =>
             Copy_Special;
       end case;
+
+      Log ("Copy " & Src & P (Kind (Src)'Image)
+           & " --> "
+           & Dst & P (Kind (Dst)'Image) & " OK");
    end Copy;
 
    ----------------------

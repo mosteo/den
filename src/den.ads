@@ -237,6 +237,14 @@ package Den with Preelaborate is
 
 private
 
+   Debug : constant Boolean := False;
+
+   -------
+   -- P --
+   -------
+
+   function P (S : String) return String is (" (" & S & ") ");
+
    function Dir_Separator return Character
    is (GNAT.OS_Lib.Directory_Separator);
 
