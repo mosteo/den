@@ -7,11 +7,13 @@ with Den.Iterators;
 with Den.Walk;
 
 with GNAT.IO;
+with GNAT.OS_Lib;
 with GNAT.Source_Info; use GNAT.Source_Info;
 
 package body Den.Filesystem is
 
    package Dirs renames Ada.Directories;
+   package OS   renames GNAT.OS_Lib;
 
    use Den.Operators;
 
@@ -242,6 +244,75 @@ package body Den.Filesystem is
 
    function Current_Dir return Path
    is (Dirs.Current_Directory);
+
+   ----------------------
+   -- Delete_Directory --
+   ----------------------
+
+   procedure Delete_Directory
+     (This    : Path;
+      Options : Delete_Directory_Options := (others => <>))
+   is
+   begin
+      Log ("deleting: " & This & P (Kind (This)'Image) & " ...");
+
+      --  Diagnostics
+
+      case Kind (This) is
+         when Nothing =>
+            if not Options.Recursive then
+               raise Name_Error with
+               Error ("target does not exist: " & This);
+            end if;
+         when File | Softlink =>
+            if not Options.Recursive then
+               raise Use_Error with
+               Error ("target kind is not deletable without recursive: "
+                      & This & P (Kind (This)'Image));
+            end if;
+         when Special =>
+            raise Use_Error with
+            Error ("target kind is not deletable: "
+                   & This & P (Kind (This)'Image));
+         when Directory =>
+            null;
+      end case;
+
+      --  Actual deletion
+
+      case Kind (This) is
+         when Directory =>
+            for Item of Iterators.Iterate (This) loop
+               Delete_Directory (This / Item, Options);
+            end loop;
+            Dirs.Delete_Directory (This); -- Should be empty now
+         when File =>
+            Dirs.Delete_File (This);
+         when Softlink =>
+            declare
+               OK : Boolean := False;
+            begin
+               OS.Delete_File (This, OK); -- Uses unlink under the hood
+               if not OK then
+                  raise Use_Error with
+                  Error ("failed to delete: " & This & P (Kind (This)'Image));
+               end if;
+            end;
+         when others =>
+            raise Program_Error with Error ("should be unreachable");
+      end case;
+
+      Log ("deleting: " & This & P (Kind (This)'Image) & " OK");
+   end Delete_Directory;
+
+   -----------------
+   -- Delete_Tree --
+   -----------------
+
+   procedure Delete_Tree (This : Path) is
+   begin
+      Delete_Directory (This, (Recursive => True));
+   end Delete_Tree;
 
    ---------------------
    -- Pseudocanonical --

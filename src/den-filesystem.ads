@@ -29,9 +29,30 @@ package Den.Filesystem is
      (Target           : Path;
       Options          : Create_Directory_Options := (others => <>));
 
+   procedure Mkdir
+     (Target           : Path;
+      Options          : Create_Directory_Options := (others => <>))
+      renames Create_Directory;
+
    function Current_Dir       return Path;
    function Current_Directory return Path renames Current_Dir;
    function CWD               return Path renames Current_Dir;
+
+   type Delete_Directory_Options is record
+      Recursive : Boolean := False;
+   end record;
+
+   procedure Delete_Directory
+     (This : Path;
+      Options : Delete_Directory_Options := (others => <>));
+
+   procedure Rmdir
+     (This    : Path;
+      Options : Delete_Directory_Options := (others => <>))
+      renames Delete_Directory;
+
+   procedure Delete_Tree (This : Path);
+   --  Recursive deletion
 
    function Pseudocanonical (This : Path) return Absolute_Path with
      Post => (if Canonizable (This)
