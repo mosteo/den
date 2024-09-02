@@ -193,3 +193,23 @@ extern "C" int c_link_target(const char *path, char *buf, size_t bufsiz) {
     buf[targetLength] = '\0';  // Null-terminate the string
     return 0;  // Success
 }
+
+extern "C" int
+c_copy_link (const char *target, const char *name)
+{
+    DWORD flags = 0;
+
+    // We must explicitly mark as directory if source link is one
+    if (GetFileAttributesA(target) & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+    }
+
+    // Use the newer version that allows unprivileged users to create symlinks
+    flags |= SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+
+    BOOLEAN result = CreateSymbolicLinkA(name, target, flags);
+
+    // Return 0 on success, -1 on failure to match Unix symlink() behavior
+    return (result == TRUE) ? 0 : -1;
+}
