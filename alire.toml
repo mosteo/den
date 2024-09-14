@@ -16,7 +16,7 @@ c_strings = "^1.1"
 [[pins]]
     [pins.aaa]
     url    = "https://github.com/mosteo/aaa"
-    commit = "0c3b440ac183c450345d4a67d407785678779aae"
+    commit = "ddfeffe2d6c8f9d19161df7b31d16d37bef4ba71"
 
     [pins.c_strings]
     url    = "https://github.com/mosteo/cstrings"
