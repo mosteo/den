@@ -195,6 +195,9 @@ package Den with Preelaborate is
      with Post => (if Is_Root (This) then Name'Result = This);
    --  Just the last component in the path; the name of a root is itself.
 
+   function Simple_Name (This : Path) return Part renames Name;
+   --  For Ada.Directories compatibility
+
    function Has_Parent (This : Path) return Boolean
    is (not Is_Root (This)
        and then (for some Char of This => Char = Dir_Separator));
