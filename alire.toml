@@ -13,15 +13,6 @@ tags = ["directory", "folder", "enumeration", "traversal", "softlink"]
 aaa = "~0.2.6"
 c_strings = "^1.1"
 
-[[pins]]
-    [pins.aaa]
-    url    = "https://github.com/mosteo/aaa"
-    commit = "ddfeffe2d6c8f9d19161df7b31d16d37bef4ba71"
-
-    [pins.c_strings]
-    url    = "https://github.com/mosteo/cstrings"
-    commit = "e4d58ad90bf32bc44304197e5906a519f5a9a7bf"
-
 [[actions]]
 type      = "test"
 command   = ["alr", "run"]
