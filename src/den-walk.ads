@@ -14,9 +14,10 @@ package Den.Walk is
      with Post =>
        (case Kind (This) is
           when Nothing                   => Ls'Result.Is_Empty,
-            when Softlink | File | Special => Ls'Result.Length in 1,
-              when others                    => True);
-   --  Return immediate children of a directory. Won't include "." or ".."
+          when Softlink | File | Special => Ls'Result.Length in 1,
+          when others                    => True);
+   --  Return immediate children of a directory. Won't include "." or "..".
+   --  Won't prepend Path (unless Canonicalize)
 
    function Dir (This    : Path;
                  Options : Ls_Options := (others => <>))
