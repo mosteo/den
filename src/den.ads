@@ -240,7 +240,7 @@ package Den with Preelaborate is
 
 private
 
-   Debug : constant Boolean := False;
+   function Debug return Boolean with Inline;
 
    -------
    -- P --

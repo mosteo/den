@@ -160,13 +160,14 @@ package body Den.Filesystem is
       begin
          case Kind (Dst) is
             when Nothing =>
-               null;
+               null; -- done below
             when Directory =>
                Copy (Src, Dst / Name (Src));
                return;
             when File =>
                if Options.Overwrite_Files then
                   Dirs.Delete_File (Dst);
+                  --  Copy done below
                else
                   raise Use_Error with
                   Error ("not overwriting exising target: " & Dst);
