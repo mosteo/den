@@ -142,7 +142,7 @@ package Den with Preelaborate is
    function Is_Hard (This : Path) return Boolean
    is ((for all A of Ancestors (This) => Kind (A) = Directory)
        and then Kind (This) in Canonical_Kinds);
-   --  Note that a non-existing path maybe hard
+   --  Note that a non-existing path may be hard
 
    function Exists (This : Path; Resolve_Links : Boolean := False)
                     return Boolean
