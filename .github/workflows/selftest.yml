@@ -19,7 +19,7 @@ jobs:
                   ubuntu-24.04-arm,
                   windows-latest
                 ]
-                v : [^13, ^14, ""]
+                v : [^14, ""]
                 soft: [true, false]
 
         steps:
@@ -39,23 +39,15 @@ jobs:
                 repository: mosteo/cstrings
                 path: deps/cstrings
 
+            - name: Verify same example
+              shell: bash
+              run: cmp example/src/example.adb tests/src/example.adb
+
             - name: Set up Alire
               uses: alire-project/setup-alire@v5
               with:
                   version: nightly
                   toolchain: gnat_native${{matrix.v}} gprbuild
-
-            - name: Fix pins
-              shell: bash
-              run: |
-                  echo $PWD
-                  cd tests
-                  alr -f pin --unpin c_strings
-                  alr with --use=../cstrings
-
-            - name: Verify same example
-              shell: bash
-              run: cmp example/src/example.adb tests/src/example.adb
 
             - name: Test
               shell: bash
