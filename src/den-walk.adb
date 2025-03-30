@@ -163,10 +163,20 @@ package body Den.Walk is
       ------------
 
       procedure Insert (This : Path; Into : in out Sorted_Paths) is
+         use Operators;
       begin
          if Options.Canonicalize then
-            Into.Include -- resolved links may point to the same file
-              (OS_Canonical (This));
+            declare
+               Canonical : constant Path := OS_Canonical (Ls.This / This);
+            begin
+               if Canonical /= "" then
+                  --  Resolved links may point to the same file
+                  Into.Include (Canonical);
+               else
+                  raise Bad_Path with
+                    "Cannot find canonical path for: " & (Ls.This / This);
+               end if;
+            end;
          else
             Into.Insert (This);
          end if;

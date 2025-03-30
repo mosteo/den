@@ -10,10 +10,13 @@ website = ""
 tags = ["directory", "folder", "enumeration", "traversal", "softlink"]
 
 [[depends-on]]
-aaa = "~0.2.6"
+aaa = "~0.3"
 c_strings = "^1.1"
 
 [[actions]]
 type      = "test"
 command   = ["alr", "run"]
 directory = "selftest"
+
+[test]
+runner = "alire"
