@@ -60,31 +60,41 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
             return 1;
         }
 
-        // initialize a std::string of bufsiz length
-        std::string buffer(bufsiz, '\0');
+        // Use a char array instead of std::string to avoid const_cast issues
+        // Initialize with null characters
+        std::vector<char> buffer(bufsiz, '\0');
 
         // Returns buffer used or needed, or 0 for error
         DWORD dwRes = GetFinalPathNameByHandle(
             hFile,
-            const_cast<LPSTR>(buffer.c_str()), bufsiz, VOLUME_NAME_DOS);
+            buffer.data(), bufsiz, VOLUME_NAME_DOS);
             // NOTE: recursive links resolve to themselves in Windows!!
 
         // Close the file handle, no longer needed
         CloseHandle(hFile);
 
         if (dwRes == 0) {
-            // Links is broken
+            // Link is broken
             return 1;
         } else if (dwRes >= bufsiz) {
             // Not enough buffer
-            return -1;
+            return ERR_BUFFER_TOO_SMALL;
         } else {
             // Remove any stupid \\?\ prefix
-            if (buffer.size() >= 4 && buffer.substr(0, 4) == "\\\\?\\") {
-                buffer = buffer.substr(4);
+            std::string path(buffer.data());
+            // We copy to a string to be able to compare more easily
+
+            if (path.size() >= 4 && path.substr(0, 4) == "\\\\?\\") {
+                path = path.substr(4);
             }
+
+            // Check if the result fits in the output buffer
+            if (path.size() >= bufsiz) {
+                return ERR_BUFFER_TOO_SMALL;
+            }
+
             // Copy from buffer to fullPath
-            strcpy(fullPath, buffer.c_str());
+            strcpy(fullPath, path.c_str());
             return 0;
         }
     } catch (const std::exception& e) {
@@ -186,11 +196,25 @@ extern "C" int c_link_target(const char *path, char *buf, size_t bufsiz) {
                         (reparseData->SymbolicLinkReparseBuffer.PrintNameOffset / sizeof(WCHAR));
     DWORD targetLength = reparseData->SymbolicLinkReparseBuffer.PrintNameLength / sizeof(WCHAR);
 
-    if (WideCharToMultiByte(CP_UTF8, 0, targetPath, targetLength, buf, bufsiz - 1, NULL, NULL) == 0) {
+    // Convert wide character string to UTF-8 and get the actual byte count
+    int bytesNeeded = WideCharToMultiByte(CP_UTF8, 0, targetPath, targetLength, NULL, 0, NULL, NULL);
+    if (bytesNeeded == 0) {
         return -GetLastError();
     }
 
-    buf[targetLength] = '\0';  // Null-terminate the string
+    // Check if the buffer is large enough
+    if (bytesNeeded >= (int)bufsiz) {
+        return ERR_BUFFER_TOO_SMALL;
+    }
+
+    // Convert the string
+    int bytesWritten = WideCharToMultiByte(CP_UTF8, 0, targetPath, targetLength, buf, bufsiz - 1, NULL, NULL);
+    if (bytesWritten == 0) {
+        return -GetLastError();
+    }
+
+    // Null-terminate the string
+    buf[bytesWritten] = '\0';
     return 0;  // Success
 }
 

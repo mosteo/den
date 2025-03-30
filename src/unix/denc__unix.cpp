@@ -25,10 +25,10 @@ extern "C" int c_canonical (const char *inputPath, char *fullPath, size_t bufsiz
     char *resolved = realpath (inputPath, NULL);
 
     if (resolved == NULL)
-        return abs(errno);
+        return abs(errno); // In case errno was negative
     else if (strlen(resolved) >= bufsiz) {
         free(resolved);
-        return -1;
+        return ERR_BUFFER_TOO_SMALL; // Use the defined constant
     } else {
         strcpy(fullPath, resolved);
         free(resolved);
@@ -68,7 +68,7 @@ extern "C" int c_link_len (const char *path)
 extern "C" int c_link_target (const char *path, char *buf, size_t bufsiz) {
     ssize_t nbytes = readlink(path, buf, bufsiz);
     if (nbytes == -1) {
-        return abs(errno);
+        return abs(errno); // In case errno was negative
     }
 
     /* If the return value was equal to the buffer size, then the link target
@@ -76,7 +76,7 @@ extern "C" int c_link_target (const char *path, char *buf, size_t bufsiz) {
        between the call to lstat() and the call to readlink()). */
 
     if (nbytes == (ssize_t)bufsiz)
-        return -1;
+        return ERR_BUFFER_TOO_SMALL;
 
     buf[nbytes] = '\0';
     return 0;
