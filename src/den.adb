@@ -1,5 +1,6 @@
 --  with Ada.Directories;
 
+with Ada.Environment_Variables;
 with Ada.IO_Exceptions;
 
 with C_Strings;
@@ -11,6 +12,25 @@ package body Den is
    package C renames C_Strings.C;
    --  package Dirs renames Ada.Directories;
    package IOex renames Ada.IO_Exceptions;
+
+   -----------
+   -- Debug --
+   -----------
+   Cached_Debug       : Boolean;
+   Cached_Debug_Valid : Boolean := False;
+   function Debug return Boolean is
+   begin
+      if Cached_Debug_Valid then
+         return Cached_Debug;
+      else
+         Cached_Debug :=
+           False
+           or else Ada.Environment_Variables.Exists ("DEN_DEBUG");
+         Cached_Debug_Valid := True;
+         return Cached_Debug;
+      end if;
+   end Debug;
+
 
    ---------------
    -- Operators --
