@@ -345,20 +345,8 @@ package body Den.Filesystem is
                Delete_Directory (This / Item, Options);
             end loop;
             Dirs.Delete_Directory (This); -- Should be empty now
-         when File =>
-            Dirs.Delete_File (This);
-         when Softlink =>
-            declare
-               use C_Strings;
-               function C_Delete_Link (Target : C_Strings.Chars_Ptr)
-                                       return C_Strings.C.int
-                 with Import, Convention => C;
-            begin
-               if C_Delete_Link (To_C (This).To_Ptr) not in 0 then
-                  raise Use_Error with
-                  Error ("failed to delete: " & This & P (Kind (This)'Image));
-               end if;
-            end;
+         when File | Softlink =>
+            Delete_File (This, Options.Delete_Files);
          when others =>
             raise Program_Error with Error ("should be unreachable");
       end case;
@@ -366,13 +354,100 @@ package body Den.Filesystem is
       Log ("deleting: " & This & P (Kind (This)'Image) & " OK");
    end Delete_Directory;
 
+   -----------
+   -- Unlink --
+   -----------
+
+   procedure Unlink (This : Path) is
+      use C_Strings;
+      function C_Delete_Link (Target : C_Strings.Chars_Ptr)
+                              return C_Strings.C.int
+        with Import, Convention => C;
+   begin
+      Log ("unlinking: " & This & P (Kind (This)'Image) & " ...");
+
+      if C_Delete_Link (To_C (This).To_Ptr) not in 0 then
+         raise Use_Error with
+           Error ("failed to unlink: " & This & P (Kind (This)'Image));
+      end if;
+
+      Log ("unlinking: " & This & P (Kind (This)'Image) & " OK");
+   end Unlink;
+
+   -----------------
+   -- Delete_File --
+   -----------------
+
+   procedure Delete_File
+     (This    : Path;
+      Options : Delete_File_Options := (others => <>)) is
+   begin
+      Log ("deleting file: " & This & P (Kind (This)'Image) & " ...");
+
+      case Kind (This) is
+         when Nothing =>
+            if Options.Do_Not_Fail then
+               Log ("skipping non-existent file: " & This);
+               return;
+            else
+               raise Name_Error with
+                 Error ("target does not exist: " & This);
+            end if;
+         when Directory =>
+            raise Use_Error with
+              Error ("target is a directory, use Delete_Directory: " & This);
+         when File =>
+            Dirs.Delete_File (This);
+         when Softlink =>
+            case Options.Delete_Softlinks is
+               when Fail =>
+                  raise Use_Error with
+                    Error ("target is a softlink, use Unlink: " & This);
+               when Delete_Link =>
+                  Unlink (This);
+               when Delete_Target =>
+                  if Is_Resolvable (This) then
+                     Delete_File (Target (This), Options);
+                  elsif Options.Do_Not_Fail then
+                     Log ("skipping broken link target: " & This);
+                  else
+                     raise Use_Error with
+                       Error ("cannot delete target of broken link: " & This);
+                  end if;
+               when Delete_Both =>
+                  if Is_Resolvable (This) then
+                     declare
+                        Target_Path : constant Path := Target (This);
+                     begin
+                        Delete_File (Target_Path, Options);
+                     end;
+                  elsif not Options.Do_Not_Fail then
+                     raise Use_Error with
+                       Error ("cannot delete target of broken link: " & This);
+                  end if;
+                  Unlink (This);
+            end case;
+         when Special =>
+            if Options.Do_Not_Fail then
+               Log ("skipping special file: " & This);
+               return;
+            else
+               raise Use_Error with
+                 Error ("cannot delete special file: " & This);
+            end if;
+      end case;
+
+      Log ("deleting file: " & This & P (Kind (This)'Image) & " OK");
+   end Delete_File;
+
    -----------------
    -- Delete_Tree --
    -----------------
 
    procedure Delete_Tree (This : Path) is
    begin
-      Delete_Directory (This, (Recursive => True));
+      Delete_Directory (This, (Delete_Files => (others => <>),
+                               Recursive    => True));
    end Delete_Tree;
 
    ---------------------

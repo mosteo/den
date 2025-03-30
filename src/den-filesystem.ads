@@ -44,8 +44,26 @@ package Den.Filesystem is
    function Current_Directory return Path renames Current_Dir;
    function CWD               return Path renames Current_Dir;
 
+   type Delete_Softlink_Options is
+     (Fail,
+      Delete_Link,
+      Delete_Target,
+      Delete_Both);
+
+   type Delete_File_Options is record
+      Delete_Softlinks : Delete_Softlink_Options := Delete_Link;
+      Do_Not_Fail      : Boolean := False;
+      --  Won't raise for certain errors, like non-existing files/link targets.
+   end record;
+
+   procedure Delete_File
+     (This    : Path;
+      Options : Delete_File_Options := (others => <>)) with
+      Pre => Kind (This) not in Nothing | Directory;
+
    type Delete_Directory_Options is record
-      Recursive : Boolean := False;
+      Delete_Files : Delete_File_Options := (others => <>);
+      Recursive    : Boolean             := False;
    end record;
 
    procedure Delete_Directory
@@ -59,6 +77,9 @@ package Den.Filesystem is
 
    procedure Delete_Tree (This : Path);
    --  Recursive deletion
+
+   procedure Unlink (This : Path) with
+     Pre => Kind (This) = Softlink;
 
    function Pseudocanonical (This : Path) return Absolute_Path with
      Post => (if Canonizable (This)
