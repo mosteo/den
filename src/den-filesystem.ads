@@ -10,15 +10,21 @@ package Den.Filesystem is
    is (Normal (Absolute (This)));
 
    type Copy_Options is record
-      Overwrite_Files : Boolean := False; -- When dst is a file
-      Merge_Dirs      : Boolean := False; -- When both src/dst are dirs
-      Resolve_Links   : Boolean := False; -- Copy target instead of link
+      Overwrite_Files      : Boolean := False; -- When dst is a file
+      Merge_Dirs           : Boolean := False; -- When both src/dst are dirs
+      Resolve_Links        : Boolean := False; -- Copy target instead of link
+      Preserve_Permissions : Boolean := True;  -- Ownership
+      Preserve_Timestamps  : Boolean := False; -- Creation/modification time
    end record;
 
    procedure Copy (Src, Dst : Path;
                    Options  : Copy_Options := (others => <>));
    --  Make a copy of a file/dir/link. For dirs, this acts as rsync when paths
    --  end in '/' (this is also rclone behavior).
+
+   procedure Copy_Attributes (Src, Dst    : Path;
+                              Permissions : Boolean;
+                              Timestamps  : Boolean);
 
    type Create_Directory_Options is record
       Fail_If_Existing    : Boolean := False;

@@ -1,0 +1,14 @@
+name = "den_tests"
+description = "Tests for the built-in Alire test runner"
+version = "0.0.0-test"
+
+[[depends-on]]
+den = "*"
+
+[[pins]]
+den = { path = ".." }
+c_strings = { path = "../deps/cstrings" }
+
+[build-profiles]
+den       = "validation"
+den_tests = "validation"

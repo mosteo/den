@@ -7,13 +7,17 @@ with Den.Iterators;
 with Den.Walk;
 
 with GNAT.IO;
---  with GNAT.OS_Lib;
+with GNAT.OS_Lib;
 with GNAT.Source_Info; use GNAT.Source_Info;
+
+--------------------
+-- Den.Filesystem --
+--------------------
 
 package body Den.Filesystem is
 
    package Dirs renames Ada.Directories;
-   --  package OS   renames GNAT.OS_Lib;
+   package OS   renames GNAT.OS_Lib;
 
    use Den.Operators;
 
@@ -38,6 +42,16 @@ package body Den.Filesystem is
                    Location : String := Source_Location)
                    return String
    is (Location & ": " & Info);
+
+   ---------------
+   -- Put_Error --
+   ---------------
+
+   procedure Put_Error (Text : String) is
+      use GNAT.IO;
+   begin
+      Put_Line (Standard_Error, Text);
+   end Put_Error;
 
    --------------
    -- Absolute --
@@ -65,8 +79,11 @@ package body Den.Filesystem is
          case Kind (Dst) is
             when Nothing =>
                Dirs.Copy_File (Src, Dst);
+               Copy_Attributes (Src, Dst,
+                                Timestamps  => Options.Preserve_Timestamps,
+                                Permissions => Options.Preserve_Permissions);
             when Directory =>
-               Dirs.Copy_File (Src, Dst / Name (Src));
+               Copy (Src, Dst / Name (Src), Options);
             when File =>
                if Options.Overwrite_Files then
                   Dirs.Delete_File (Dst);
@@ -123,6 +140,12 @@ package body Den.Filesystem is
                   Copy (Src / Item, Dst);
             end case;
          end loop;
+
+         --  Fix permissions if requested
+
+         Copy_Attributes (Src, Dst,
+                          Timestamps  => Options.Preserve_Timestamps,
+                          Permissions => Options.Preserve_Permissions);
       end Copy_Dir;
 
       ---------------
@@ -206,6 +229,41 @@ package body Den.Filesystem is
            & " --> "
            & Dst & P (Kind (Dst)'Image) & " OK");
    end Copy;
+
+   ---------------------
+   -- Copy_Attributes --
+   ---------------------
+
+   procedure Copy_Attributes (Src, Dst    : Path;
+                              Permissions : Boolean;
+                              Timestamps  : Boolean)
+   is
+      OK : Boolean := False;
+   begin
+      if not (Permissions or else Timestamps) then
+         return;
+      end if;
+
+      OS.Copy_File_Attributes
+        (From             => Src,
+         To               => Dst,
+         Success          => OK,
+         Copy_Timestamp   => Timestamps,
+         Copy_Permissions => Permissions);
+
+      if not OK then
+         Put_Error
+           ("When copying attributes from " & Src & " to " & Dst & ":");
+         if Permissions then
+            Put_Error ("- permissions");
+         end if;
+         if Timestamps then
+            Put_Error ("- timestamps");
+         end if;
+         raise Dirs.Status_Error with
+           Error ("Could not copy attributes");
+      end if;
+   end Copy_Attributes;
 
    ----------------------
    -- Create_Directory --

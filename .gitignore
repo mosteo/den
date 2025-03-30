@@ -4,3 +4,6 @@
 /config/
 
 .clang-format
+
+*.stderr
+*.stdout
