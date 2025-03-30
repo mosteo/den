@@ -381,6 +381,25 @@ package body Den.Filesystem is
    procedure Delete_File
      (This    : Path;
       Options : Delete_File_Options := (others => <>)) is
+
+      -----------------------------------
+      -- Delete_Target_If_Regular_File --
+      -----------------------------------
+
+      procedure Delete_Target_If_Regular_File (Target_Path : Path) is
+      begin
+         if Kind (Target_Path) = File then
+            Delete_File (Target_Path, Options);
+         elsif Options.Do_Not_Fail then
+            Log ("skipping non-file target: " & Target_Path &
+                 " (kind: " & Kind (Target_Path)'Image & ")");
+         else
+            raise Use_Error with
+              Error ("target is not a regular file: " & Target_Path &
+                     " (kind: " & Kind (Target_Path)'Image & ")");
+         end if;
+      end Delete_Target_If_Regular_File;
+
    begin
       Log ("deleting file: " & This & P (Kind (This)'Image) & " ...");
 
@@ -407,23 +426,21 @@ package body Den.Filesystem is
                   Unlink (This);
                when Delete_Target =>
                   if Is_Resolvable (This) then
-                     Delete_File (Target (This), Options);
+                      Delete_Target_If_Regular_File (Resolve (This));
                   elsif Options.Do_Not_Fail then
-                     Log ("skipping broken link target: " & This);
+                     Log ("skipping unresolvable link target: " & This);
                   else
                      raise Use_Error with
-                       Error ("cannot delete target of broken link: " & This);
+                       Error ("cannot delete target of unresolvable link: "
+                              & This);
                   end if;
                when Delete_Both =>
-                  if Is_Resolvable (This) then
-                     declare
-                        Target_Path : constant Path := Target (This);
-                     begin
-                        Delete_File (Target_Path, Options);
-                     end;
+                    if Is_Resolvable (This) then
+                      Delete_Target_If_Regular_File (Resolve (This));
                   elsif not Options.Do_Not_Fail then
                      raise Use_Error with
-                       Error ("cannot delete target of broken link: " & This);
+                       Error ("cannot delete target of unresolvable link: "
+                              & This);
                   end if;
                   Unlink (This);
             end case;
