@@ -4,6 +4,10 @@ with GNAT.OS_Lib;
 
 package Den with Preelaborate is
 
+   Debug_Flag : constant String := "DEN_DEBUG";
+   --  Set it in the environment to any value (even empty) to enable debug
+   --  logging output.
+
    Bad_Operation : exception;
    --  Raised when some transformation between paths can be completed
 
