@@ -10,15 +10,15 @@ jobs:
         strategy:
             fail-fast: false
             matrix:
-                os: [ windows-latest ]
-                #   macos-13,
-                #   macos-latest,
-                #   ubuntu-22.04,
-                #   ubuntu-22.04-arm,
-                #   ubuntu-24.04,
-                #   ubuntu-24.04-arm,
-                #   windows-latest
-                # ]
+                os: [ # windows-latest ]
+                  macos-13,
+                  macos-latest,
+                  ubuntu-22.04,
+                  ubuntu-22.04-arm,
+                  ubuntu-24.04,
+                  ubuntu-24.04-arm,
+                  windows-latest
+                ]
                 v : [^13, ^14, ""]
                 soft: [true, false]
 
@@ -29,11 +29,15 @@ jobs:
             - name: Check out den
               uses: actions/checkout@v2
 
+            - name: Clean up dev deps
+              shell: bash
+              run: rm -rf deps/*
+
             - name: Check out cstrings
               uses: actions/checkout@v2
               with:
                 repository: mosteo/cstrings
-                path: cstrings
+                path: deps/cstrings
 
             - name: Set up Alire
               uses: alire-project/setup-alire@v5
