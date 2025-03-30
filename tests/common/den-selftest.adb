@@ -1,7 +1,7 @@
 with AAA.Strings; use AAA.Strings;
 
 with Ada.Containers;
---  with Ada.Directories;
+with Ada.Directories;
 with Ada.Text_IO; use Ada.Text_IO;
 
 with Den.Du;
@@ -33,6 +33,9 @@ procedure Den.Selftest is
    Cases : constant Relative_Path := +"../cases";
    --  This path must be kept relative for some tests to be effective
 
+   Canary : constant String := "canary";
+   --  We use this file to ascertain if the check out has created softlinks
+
    --  package Dirs renames Ada.Directories;
    --  package OS renames GNAT.OS_Lib;
 
@@ -41,11 +44,12 @@ procedure Den.Selftest is
    --  Adjust some checks depending on whether git checkout created softlinks
    --  or not. Windows does support softlinks on NTFS at least, and on GH
    --  runners they're created. Developer mode must be enabled in Windows.
-   Supported : constant Boolean := Kind ("source") = Softlink;
+   Supported : constant Boolean := Kind ("canary") = Softlink;
    --  This is a link to "src"
 
 begin
-   Put_Line ("Testing with Supported = " & Supported'Image);
+   Put_Line ("Testing with Supported = " & Supported'Image
+             & " from dir " & Ada.Directories.Current_Directory);
 
    select
       delay 66.6;
@@ -85,7 +89,9 @@ begin
       pragma Assert ("bin" in Hard_Path);
       pragma Assert -- name is softlink
         ((Canonical ("..") / "cases" / "links" / "b"
-          not in Hard_Path) = Supported);
+          not in Hard_Path) = Supported,
+          (Canonical ("..") / "cases" / "links" / "b") & " = "
+          & Kind ((Canonical ("..") / "cases" / "links" / "b"))'Image);
       pragma Assert -- middle path is softlink (i)
         ((Canonical ("..") / "cases" / "links" / "i" / "h"
          not in Hard_Path));
@@ -283,7 +289,7 @@ begin
       pragma Assert (Parent (CWD / "bin") = CWD);
 
       --  Canonical_Parent
-      pragma Assert (Kind (Canonical_Parent (".") / "selftest") = Directory);
+      pragma Assert (Kind (Canonical_Parent (".") / "tests") = Directory);
       begin
          pragma Assert (Kind (Parent (".")) = Directory, "must raise");
          raise Program_Error with "Unexpected pass";
@@ -323,11 +329,11 @@ begin
                 Cases / "links" / "mal" / "formed");
          pragma Assert
            (Resolve (Cases / "loops" / "tic") = Cases / "loops" / "toc");
-         pragma Assert (Resolve ("source") = "src");
+         pragma Assert (Resolve (Canary) = "src");
          pragma Assert (Resolve ("src") = "src");
 
          --  Target & friends
-         pragma Assert (Target_Length ("source") = 3);
+         pragma Assert (Target_Length (Canary) = 3);
          begin
             pragma Assert (Target_Length ("src") = 3, "must raise");
             raise Program_Error with "Unexpected pass";
