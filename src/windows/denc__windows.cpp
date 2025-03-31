@@ -268,3 +268,24 @@ c_delete_link (const char *path)
 
     return (result != 0) ? 0 : -1;
 }
+
+extern "C"
+int c_create_link (const char *target, const char *name)
+{
+    // Create a soft link
+
+    // Use the newer version that allows unprivileged users to create symlinks
+    DWORD flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
+
+    // Check if the target is a directory
+    if (GetFileAttributesA(target) & FILE_ATTRIBUTE_DIRECTORY)
+    {
+        flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
+    }
+
+    // Create the symbolic link
+    BOOL result = CreateSymbolicLinkA(name, target, flags);
+
+    // Return 0 on success, -1 on failure to match Unix symlink() behavior
+    return (result == TRUE) ? 0 : -1;
+}

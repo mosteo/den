@@ -88,11 +88,17 @@ int c_copy_link (const char *target, const char *name)
     return symlink(target, name);
 }
 
-extern "C" int
-c_delete_link (const char *path)
+extern "C"
+int c_delete_link (const char *path)
 {
     if (!c_is_softlink (path))
         return -1;
 
     return unlink(path);
+}
+
+extern "C"
+int c_create_link (const char *target, const char *name)
+{
+    return symlink(target, name);
 }
