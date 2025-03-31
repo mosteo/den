@@ -386,12 +386,13 @@ begin
            (Find
               (Cases,
                Options => (Canonicalize => Canon, others => <>))
-            .Length > 1);
+            .Length > 1,
+            "Length 0 with Canon: " & Canon'Image);
          Put_Line ("OK find (" & Canon'Image & ")");
       end loop;
       --  Verify filtering
       for K in Kinds'Range loop
-         for F of Find ("..", Filter  => Kind_Is (K))
+         for F of Find (".." / "cases", Filter  => Kind_Is (K))
          loop
             pragma Assert (Kind (F.Path) = K,
                            "Expected: " & K'Image
