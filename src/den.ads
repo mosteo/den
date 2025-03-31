@@ -218,6 +218,12 @@ package Den with Preelaborate is
    --  Will not try to obtain absolute paths, nor canonalize nor do any
    --  other processing. See Canonical_Parent for that.
 
+   function Safe_Parent (This : Path) return Path
+   is (if Has_Parent (This)
+       then Parent (This)
+       else ".");
+   --  Always get a parent, even for simple names. This introduces implicit dependency on the current directory.
+
    function Canonical_Parent (This : Path) return Canonical_Path
    is (Parent (Canonical (This)))
      with Pre => not Is_Root (This);

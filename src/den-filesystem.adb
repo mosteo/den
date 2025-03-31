@@ -354,6 +354,64 @@ package body Den.Filesystem is
       Log ("deleting: " & This & P (Kind (This)'Image) & " OK");
    end Delete_Directory;
 
+   ----------
+   -- Link --
+   ----------
+
+   procedure Link (From, Target : Path;
+                   Options      : Link_Options := (others => <>))
+   is
+      function C_Create_Link (Target, Name : C_Strings.Chars_Ptr)
+                              return C_Strings.C.int
+        with Import, Convention => C;
+      use C_Strings;
+
+      Abs_Target : constant Path :=
+        (if Is_Absolute (Target) then
+            Target
+         elsif Has_Parent (From) then
+            Parent (From) / Target
+         else
+            Current_Directory / Target);
+   begin
+      Log ("linking: " & From
+           & " --> "
+           & Target & P (Kind (Target)'Image)
+           & P ("from ./: " & Abs_Target)
+           & " ...");
+
+      if Kind (From) /= Nothing then
+         raise Use_Error with
+           Error ("new link already exists: " & From &
+                  " (kind: " & Kind (From)'Image & ")");
+      end if;
+
+      if Kind (Abs_Target) = Nothing and then not Options.Allow_Missing_Target
+      then
+         raise Use_Error with
+           Error ("target does not exist: " & Abs_Target);
+      end if;
+
+      declare
+         Result : constant Integer :=
+                    Integer
+                      (C_Create_Link
+                         (To_C (Target).To_Ptr,
+                          To_C (From).To_Ptr));
+      begin
+         if Result /= 0 then
+            raise Use_Error with
+              Error ("cannot create softlink "
+                     & From & " --> " & Target & P (Kind (Target)'Image)
+                     & " (error: " & Result'Image & ")");
+         end if;
+      end;
+
+      Log ("linking: " & From & P (Kind (From)'Image)
+           & " --> "
+           & Target & P (Kind (Target)'Image) & " OK");
+   end Link;
+
    -----------
    -- Unlink --
    -----------
@@ -555,6 +613,13 @@ package body Den.Filesystem is
          then Pseudocanonical (Into)
          else Absnormal (Into));
    begin
+      Log ("Relative: " & From & " --> " & Into & " ...");
+
+      --  Start by using the parent if From is not a folder
+      if Exists (From) and then Kind (From) /= Directory then
+         return Relative (Safe_Parent (From), Into, Canonicalize);
+      end if;
+
       --  Trivial case: the same path
       if F = T then
          raise Bad_Operation with

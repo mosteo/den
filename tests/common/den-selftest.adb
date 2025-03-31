@@ -373,7 +373,11 @@ begin
 
       --  Ls
       for Canon in Boolean'Range loop
-         for P of Ls (".", (Canonicalize => Canon)) loop
+         --  Ls a couple of folders. We cannot simply ls "." as its contents change during testing and that causes race conditions.
+         for P of Ls ("cases", (Canonicalize => Canon)) loop
+            pragma Assert (Is_Absolute (P) = Canon);
+         end loop;
+         for P of Ls ("tests", (Canonicalize => Canon)) loop
             pragma Assert (Is_Absolute (P) = Canon);
          end loop;
       end loop;
