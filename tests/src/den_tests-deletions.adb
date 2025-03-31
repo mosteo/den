@@ -43,6 +43,14 @@ procedure Den_Tests.Deletions is
    end Reset_Test_Dir;
 
 begin
+   --  Succeed this test is softlinks are not supported, as this would
+   --  otherwise fail to match some expectations on disk.
+
+   if kind ("canary") /= Softlink then
+      Put_Line ("Skipping tests as softlinks are not supported");
+      return;
+   end if;
+
    -- Create a temporary test directory
    Put_Line ("Creating temporary test directory: " & Test_Dir);
    Reset_Test_Dir;
@@ -468,8 +476,7 @@ begin
          when others =>
             Put_Line
               ("ERROR: Exception raised when deleting non-existent file with Do_Not_Fail option");
-            raise Program_Error
-              with "Delete_File with Do_Not_Fail option raised an exception";
+            raise;
       end;
    end;
 

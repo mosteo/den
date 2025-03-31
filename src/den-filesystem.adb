@@ -366,6 +366,12 @@ package body Den.Filesystem is
    begin
       Log ("unlinking: " & This & P (Kind (This)'Image) & " ...");
 
+      if Kind (This) /= Softlink then
+         raise Use_Error with
+           Error ("target is not a softlink: " & This &
+                  " (kind: " & Kind (This)'Image & ")");
+      end if;
+
       if C_Delete_Link (To_C (This).To_Ptr) not in 0 then
          raise Use_Error with
            Error ("failed to unlink: " & This & P (Kind (This)'Image));
@@ -413,8 +419,13 @@ package body Den.Filesystem is
                  Error ("target does not exist: " & This);
             end if;
          when Directory =>
-            raise Use_Error with
-              Error ("target is a directory, use Delete_Directory: " & This);
+            if Options.Do_Not_Fail then
+               Log ("skipping directory: " & This);
+               return;
+            else
+               raise Use_Error with
+                 Error ("target is directory, use Delete_Directory: " & This);
+            end if;
          when File =>
             Dirs.Delete_File (This);
          when Softlink =>
@@ -431,7 +442,9 @@ package body Den.Filesystem is
                      Log ("skipping unresolvable link target: " & This);
                   else
                      raise Use_Error with
-                       Error ("cannot delete target of unresolvable link: "
+                       Error ("cannot delete target: " & Target (This)
+                              & " (kind: " & Kind (Resolve (This))'Image
+                              & "of unresolvable link: "
                               & This);
                   end if;
                when Delete_Both =>

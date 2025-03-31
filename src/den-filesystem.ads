@@ -58,8 +58,7 @@ package Den.Filesystem is
 
    procedure Delete_File
      (This    : Path;
-      Options : Delete_File_Options := (others => <>)) with
-      Pre => Kind (This) not in Nothing | Directory;
+      Options : Delete_File_Options := (others => <>));
 
    type Delete_Directory_Options is record
       Delete_Files : Delete_File_Options := (others => <>);

@@ -22,4 +22,4 @@ directory = "selftest"
 runner = "alire"
 
 [[pins]]
-c_strings = { path='../c_strings' }
+c_strings = { path='deps/cstrings' }

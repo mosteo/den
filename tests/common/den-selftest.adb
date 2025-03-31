@@ -391,7 +391,7 @@ begin
       end loop;
       --  Verify filtering
       for K in Kinds'Range loop
-         for F of Find ("..", Filter  => Kind_Is (K))
+         for F of Find (".." / "cases", Filter  => Kind_Is (K))
          loop
             pragma Assert (Kind (F.Path) = K,
                            "Expected: " & K'Image
