@@ -128,6 +128,9 @@ package Den with Preelaborate is
    subtype Final_Kinds is Kinds
      with Static_Predicate => Final_Kinds /= Softlink;
 
+   subtype Final_Existing_Kinds is Final_Kinds
+     with Static_Predicate => Final_Existing_Kinds /= Nothing;
+
    subtype Childless_Kinds is Kinds range File .. Special;
 
    subtype Canonical_Kinds is Kinds with
@@ -182,9 +185,10 @@ package Den with Preelaborate is
    --  Can only be True if this designates a softlink
 
    function Is_Resolvable (This : Path) return Boolean
-   is (Kind (This) /= Nothing and then
-      (Kind (This) /= Softlink or else
-         not (Is_Broken (This) or else Is_Recursive (This))));
+   is (kind (this) not in Nothing | Softlink
+       or else (Resolve (This) /= This
+                and then Kind (Resolve (This)) in Final_Existing_Kinds));
+   --  True for non-softlinks or softlinks with a valid target
 
    function Canonical (This : Existing_Path) return Canonical_Path;
    --  Returns the absolute hard path to This, which would be unique if
