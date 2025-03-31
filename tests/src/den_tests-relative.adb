@@ -61,10 +61,10 @@ begin
       declare
          Rel_Path : constant Path := Relative (Dir1, Dir2);
       begin
-         -- Check that Rel_Path equals "../dir2"
-         if Rel_Path /= "../dir2" then
+         -- Check that Rel_Path equals ".." / "dir2"
+         if Rel_Path /= ".." / "dir2" then
             Put_Line ("ERROR: Incorrect relative path: " & Rel_Path &
-                      " instead of ../dir2");
+                      " instead of " & ".." / "dir2");
             raise Program_Error with "Relative path calculation failed";
          else
             Put_Line ("SUCCESS: Relative path is correct: " & Rel_Path);
@@ -91,7 +91,7 @@ begin
          -- Check that Rel_Path1 equals "child"
          if Rel_Path1 /= "child" then
             Put_Line ("ERROR: Incorrect relative path from parent to child: " &
-                      Rel_Path1 & " instead of child");
+                      Rel_Path1 & " instead of " & "child");
             raise Program_Error with "Relative path calculation failed";
          else
             Put_Line ("SUCCESS: Relative path from parent to child is correct: " &
@@ -106,7 +106,7 @@ begin
          -- Check that Rel_Path2 equals ".."
          if Rel_Path2 /= ".." then
             Put_Line ("ERROR: Incorrect relative path from child to parent: " &
-                      Rel_Path2 & " instead of ..");
+                      Rel_Path2 & " instead of " & "..");
             raise Program_Error with "Relative path calculation failed";
          else
             Put_Line ("SUCCESS: Relative path from child to parent is correct: " &
@@ -138,10 +138,10 @@ begin
       declare
          Rel_Path : constant Path := Relative (Leaf1, Leaf2);
       begin
-         -- Check that Rel_Path equals "../../branch2/leaf2"
-         if Rel_Path /= "../../branch2/leaf2" then
+         -- Check that Rel_Path equals ".." / ".." / "branch2" / "leaf2"
+         if Rel_Path /= ".." / ".." / "branch2" / "leaf2" then
             Put_Line ("ERROR: Incorrect relative path: " & Rel_Path &
-                      " instead of ../../branch2/leaf2");
+                      " instead of " & ".." / ".." / "branch2" / "leaf2");
             raise Program_Error with "Relative path calculation failed";
          else
             Put_Line ("SUCCESS: Relative path is correct: " & Rel_Path);
@@ -171,10 +171,10 @@ begin
          declare
             Rel_Path1 : constant Path := Relative (Dir1, Link_Dir);
          begin
-            -- Check that Rel_Path1 equals "../link_to_dir2"
-            if Rel_Path1 /= "../link_to_dir2" then
-               Put_Line ("ERROR: Incorrect relative path with Canonicalize = False: " &
-                         Rel_Path1 & " instead of ../link_to_dir2");
+         -- Check that Rel_Path1 equals ".." / "link_to_dir2"
+         if Rel_Path1 /= ".." / "link_to_dir2" then
+            Put_Line ("ERROR: Incorrect relative path with Canonicalize = False: " &
+                      Rel_Path1 & " instead of " & ".." / "link_to_dir2");
                raise Program_Error with "Relative path calculation failed";
             else
                Put_Line ("SUCCESS: Relative path with Canonicalize = False is correct: " &
@@ -187,10 +187,10 @@ begin
             Rel_Path2 : constant Path := Relative (Dir1, Link_Dir,
                                                   Canonicalize => True);
          begin
-            -- Check that Rel_Path2 equals "../dir2"
-            if Rel_Path2 /= "../dir2" then
-               Put_Line ("ERROR: Incorrect relative path with Canonicalize = True: " &
-                         Rel_Path2 & " instead of ../dir2");
+         -- Check that Rel_Path2 equals ".." / "dir2"
+         if Rel_Path2 /= ".." / "dir2" then
+            Put_Line ("ERROR: Incorrect relative path with Canonicalize = True: " &
+                      Rel_Path2 & " instead of " & ".." / "dir2");
                raise Program_Error with "Relative path calculation failed";
             else
                Put_Line ("SUCCESS: Relative path with Canonicalize = True is correct: " &
@@ -217,10 +217,10 @@ begin
       declare
          Rel_Path : constant Path := Relative (Dir1, Non_Existent_Dir);
       begin
-         -- Check that Rel_Path equals "../non_existent"
-         if Rel_Path /= "../non_existent" then
+         -- Check that Rel_Path equals ".." / "non_existent"
+         if Rel_Path /= ".." / "non_existent" then
             Put_Line ("ERROR: Incorrect relative path to non-existing path: " &
-                      Rel_Path & " instead of ../non_existent");
+                      Rel_Path & " instead of " & ".." / "non_existent");
             raise Program_Error with "Relative path calculation failed";
          else
             Put_Line ("SUCCESS: Relative path to non-existing path is correct: " &
@@ -244,10 +244,10 @@ begin
       declare
          Rel_Path : constant Path := Relative (Non_Existent_Dir, Dir1);
       begin
-         -- Check that Rel_Path equals "../dir1"
-         if Rel_Path /= "../dir1" then
+         -- Check that Rel_Path equals ".." / "dir1"
+         if Rel_Path /= ".." / "dir1" then
             Put_Line ("ERROR: Incorrect relative path from non-existing path: " &
-                      Rel_Path & " instead of ../dir1");
+                      Rel_Path & " instead of " & ".." / "dir1");
             raise Program_Error with "Relative path calculation failed";
          else
             Put_Line ("SUCCESS: Relative path from non-existing path is correct: " &
@@ -272,10 +272,10 @@ begin
       declare
          Rel_Path : constant Path := Relative (Abs_Path1, Abs_Path2);
       begin
-         -- Check that Rel_Path equals "../dir2"
-         if Rel_Path /= "../dir2" then
+         -- Check that Rel_Path equals ".." / "dir2"
+         if Rel_Path /= ".." / "dir2" then
             Put_Line ("ERROR: Incorrect relative path between absolute paths: " &
-                      Rel_Path & " instead of ../dir2");
+                      Rel_Path & " instead of " & ".." / "dir2");
             raise Program_Error with "Relative path calculation failed";
          else
             Put_Line ("SUCCESS: Relative path between absolute paths is correct: " &
@@ -305,10 +305,10 @@ begin
       declare
          Rel_Path : constant Path := Relative (Complex1, Complex2);
       begin
-         -- Check that Rel_Path equals "../../dir2/subdir"
-         if Rel_Path /= "../../dir2/subdir" then
+         -- Check that Rel_Path equals ".." / ".." / "dir2" / "subdir"
+         if Rel_Path /= ".." / ".." / "dir2" / "subdir" then
             Put_Line ("ERROR: Incorrect relative path with complex paths: " &
-                      Rel_Path & " instead of ../../dir2/subdir");
+                      Rel_Path & " instead of " & ".." / ".." / "dir2" / "subdir");
             raise Program_Error with "Relative path calculation failed";
          else
             Put_Line ("SUCCESS: Relative path with complex paths is correct: " &
@@ -335,10 +335,10 @@ begin
       declare
          Rel_Path : constant Path := Relative (Dir1, File_Path);
       begin
-         -- Check that Rel_Path equals "../dir2/test_file.txt"
-         if Rel_Path /= "../dir2/test_file.txt" then
+         -- Check that Rel_Path equals ".." / "dir2" / "test_file.txt"
+         if Rel_Path /= ".." / "dir2" / "test_file.txt" then
             Put_Line ("ERROR: Incorrect relative path to file from uncle dir: " &
-                      Rel_Path & " instead of ../dir2/test_file.txt");
+                      Rel_Path & " instead of " & ".." / "dir2" / "test_file.txt");
             raise Program_Error with "Relative path calculation failed";
          else
             Put_Line ("SUCCESS: Relative path to file from uncle dir is correct: " &
@@ -353,7 +353,7 @@ begin
          -- Check that Rel_Path equals "test_file.txt"
          if Rel_Path /= "test_file.txt" then
             Put_Line ("ERROR: Incorrect relative path to file from parent dir: " &
-                      Rel_Path & " instead of test_file.txt");
+                      Rel_Path & " instead of " & "test_file.txt");
             raise Program_Error with "Relative path calculation failed";
          else
             Put_Line ("SUCCESS: Relative path to file from parent dir is correct: " &
@@ -365,10 +365,10 @@ begin
       declare
          Rel_Path : constant Path := Relative (Test_Dir, File_Path);
       begin
-         -- Check that Rel_Path equals "dir2/test_file.txt"
-         if Rel_Path /= "dir2/test_file.txt" then
+         -- Check that Rel_Path equals "dir2" / "test_file.txt"
+         if Rel_Path /= "dir2" / "test_file.txt" then
             Put_Line ("ERROR: Incorrect relative path to file from grandparent dir: " &
-                      Rel_Path & " instead of dir2/test_file.txt");
+                      Rel_Path & " instead of " & "dir2" / "test_file.txt");
             raise Program_Error with "Relative path calculation failed";
          else
             Put_Line ("SUCCESS: Relative path to file from grandparent dir is correct: " &
