@@ -617,7 +617,9 @@ package body Den.Filesystem is
 
       --  Start by using the parent if From is not a folder
       if Exists (From) and then Kind (From) /= Directory then
-         return Relative (Safe_Parent (From), Into, Canonicalize);
+         raise Use_Error with
+           Error ("From is not a directory: " & From
+                  & " (kind: " & Kind (From)'Image & ")");
       end if;
 
       --  Trivial case: the same path
