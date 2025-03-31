@@ -11,6 +11,18 @@ procedure Den_Tests.Deletions is
    Test_Dir  : constant Path := "deletions_test_dir";
    Cases_Dir : constant Path := ".." / "cases"; -- Relative to tests directory
 
+   ----------------------
+   -- Create_Test_File --
+   ----------------------
+
+   procedure Create_Test_File (File_Path : Path) is
+      F : Ada.Text_IO.File_Type;
+   begin
+      Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, File_Path);
+      Ada.Text_IO.Put_Line (F, "This is a test file");
+      Ada.Text_IO.Close (F);
+   end Create_Test_File;
+
    ------------------
    -- Reset_Test_Dir --
    ------------------
@@ -45,13 +57,7 @@ begin
       Put_Line ("Test 1: Delete a regular file");
 
       -- Create a regular file
-      declare
-         F : Ada.Text_IO.File_Type;
-      begin
-         Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, Test_File);
-         Ada.Text_IO.Put_Line (F, "This is a test file");
-         Ada.Text_IO.Close (F);
-      end;
+      Create_Test_File(Test_File);
 
       -- Verify that the file exists
       if not Exists (Test_File) then
@@ -356,6 +362,39 @@ begin
       end if;
    end;
 
+   -- Test 10: Delete a regular file using Delete_File with Delete_Target option
+   Reset_Test_Dir;
+   declare
+      Test_File : constant Path := Test_Dir / "regular_file.txt";
+      Options   : constant Delete_File_Options :=
+        (Delete_Softlinks => Delete_Target, others => <>);
+   begin
+      Put_Line
+        ("Test 10: Delete a regular file using Delete_File with Delete_Target option");
+
+      -- Create a regular file
+      Create_Test_File(Test_File);
+
+      -- Verify that the file exists
+      if not Exists (Test_File) then
+         Put_Line ("ERROR: Failed to create test file");
+         raise Program_Error with "Test file creation failed";
+      end if;
+
+      -- Delete the file using Delete_File with Delete_Target option
+      Delete_File (Test_File, Options);
+
+      -- Verify that the file no longer exists
+      if Exists (Test_File) then
+         Put_Line
+           ("ERROR: File still exists after Delete_File with Delete_Target option");
+         raise Program_Error
+           with "Delete_File with Delete_Target option failed to delete the file";
+      else
+         Put_Line ("SUCCESS: File was successfully deleted");
+      end if;
+   end;
+
    -- Test 9: Delete a symbolic link to a directory using Delete_File with Delete_Link option
    Reset_Test_Dir;
    declare
@@ -400,6 +439,113 @@ begin
       else
          Put_Line
            ("SUCCESS: Target directory still exists after deleting the link");
+      end if;
+   end;
+
+   -- Test 12: Test Delete_File with Do_Not_Fail option on a non-existent file
+   Reset_Test_Dir;
+   declare
+      Non_Existent_File : constant Path := Test_Dir / "non_existent_file.txt";
+      Options           : constant Delete_File_Options :=
+        (Do_Not_Fail => True, others => <>);
+   begin
+      Put_Line
+        ("Test 12: Test Delete_File with Do_Not_Fail option on a non-existent file");
+
+      -- Verify that the file does not exist
+      if Exists (Non_Existent_File) then
+         Put_Line ("ERROR: File unexpectedly exists: " & String (Non_Existent_File));
+         raise Program_Error with "Test file unexpectedly exists";
+      end if;
+
+      -- Try to delete a non-existent file with Do_Not_Fail option
+      -- This should not raise an exception
+      begin
+         Delete_File (Non_Existent_File, Options);
+         Put_Line
+           ("SUCCESS: No exception raised when deleting non-existent file with Do_Not_Fail option");
+      exception
+         when others =>
+            Put_Line
+              ("ERROR: Exception raised when deleting non-existent file with Do_Not_Fail option");
+            raise Program_Error
+              with "Delete_File with Do_Not_Fail option raised an exception";
+      end;
+   end;
+
+   -- Test 11: Delete a regular file using Delete_File with Delete_Both option
+   Reset_Test_Dir;
+   declare
+      Test_File : constant Path := Test_Dir / "regular_file.txt";
+      Options   : constant Delete_File_Options :=
+        (Delete_Softlinks => Delete_Both, others => <>);
+   begin
+      Put_Line
+        ("Test 11: Delete a regular file using Delete_File with Delete_Both option");
+
+      -- Create a regular file
+      Create_Test_File(Test_File);
+
+      -- Verify that the file exists
+      if not Exists (Test_File) then
+         Put_Line ("ERROR: Failed to create test file");
+         raise Program_Error with "Test file creation failed";
+      end if;
+
+      -- Delete the file using Delete_File with Delete_Both option
+      Delete_File (Test_File, Options);
+
+      -- Verify that the file no longer exists
+      if Exists (Test_File) then
+         Put_Line
+           ("ERROR: File still exists after Delete_File with Delete_Both option");
+         raise Program_Error
+           with "Delete_File with Delete_Both option failed to delete the file";
+      else
+         Put_Line ("SUCCESS: File was successfully deleted");
+      end if;
+   end;
+
+   -- Test 13: Test Delete_File on a directory (should be rejected per precondition)
+   Reset_Test_Dir;
+   declare
+      Dir_Path : constant Path := Test_Dir / "subdir";
+      Options  : constant Delete_File_Options := (others => <>);
+   begin
+      Put_Line
+        ("Test 13: Test Delete_File on a directory (should be rejected per precondition)");
+
+      -- Create a directory
+      Create_Directory (Dir_Path);
+
+      -- Verify that the directory exists
+      if not Exists (Dir_Path) then
+         Put_Line ("ERROR: Failed to create test directory");
+         raise Program_Error with "Test directory creation failed";
+      end if;
+
+      -- Try to delete a directory using Delete_File
+      -- This should raise an exception due to the precondition
+      begin
+         Delete_File (Dir_Path, Options);
+         Put_Line
+           ("ERROR: No exception raised when using Delete_File on a directory");
+         raise Program_Error
+           with "Delete_File on a directory did not raise an exception";
+      exception
+         when others =>
+            Put_Line
+              ("SUCCESS: Exception raised when using Delete_File on a directory");
+      end;
+
+      -- Verify that the directory still exists
+      if not Exists (Dir_Path) then
+         Put_Line
+           ("ERROR: Directory was deleted despite expected precondition failure");
+         raise Program_Error with "Directory was unexpectedly deleted";
+      else
+         Put_Line
+           ("SUCCESS: Directory still exists after failed Delete_File operation");
       end if;
    end;
 

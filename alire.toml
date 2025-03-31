@@ -20,3 +20,6 @@ directory = "selftest"
 
 [test]
 runner = "alire"
+
+[[pins]]
+c_strings = { path='../c_strings' }
