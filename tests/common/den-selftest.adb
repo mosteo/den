@@ -386,7 +386,8 @@ begin
            (Find
               (Cases,
                Options => (Canonicalize => Canon, others => <>))
-            .Length > 1);
+            .Length > 1,
+            "Length 0 with Canon: " & Canon'Image);
          Put_Line ("OK find (" & Canon'Image & ")");
       end loop;
       --  Verify filtering

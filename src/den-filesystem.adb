@@ -207,7 +207,7 @@ package body Den.Filesystem is
    begin
       Log ("Copy " & Src & P (Kind (Src)'Image)
            & " --> "
-           & Dst & P (Kind (Dst)'Image) & " ...");
+           & Dst & " ...");
 
       case Kind (Src) is
          when Nothing =>
@@ -444,7 +444,7 @@ package body Den.Filesystem is
                      raise Use_Error with
                        Error ("cannot delete target: " & Target (This)
                               & " (kind: " & Kind (Resolve (This))'Image
-                              & "of unresolvable link: "
+                              & " of unresolvable link: "
                               & This);
                   end if;
                when Delete_Both =>
