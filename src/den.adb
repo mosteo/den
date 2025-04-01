@@ -248,18 +248,32 @@ package body Den is
 
       package OS renames GNAT.OS_Lib;
 
+      ---------
+      -- Log --
+      ---------
+
+      function Log (Msg : String) return Kinds is
+      begin
+         Log (Msg);
+         return Nothing;
+      end Log;
+
    begin
       return
         (if Resolve_Links then
-           (if Kind (This) = Nothing then
-                 Nothing
-            elsif not Is_Resolvable (This) then
-                (if Is_Broken (This) then
-                    Nothing
-                 else
-                    Softlink)
+           (if Kind (This, Resolve_Links => False) /= Softlink then
+                 Kind (This, Resolve_Links => False)
             else
-               Kind (Canonical (This), Resolve_Links => False))
+              (if Is_Broken (This) then
+                    Nothing
+               elsif Is_Recursive (This) then
+                    Softlink
+               elsif OS_Canonical (This) /= "" then
+                    Kind (OS_Canonical (This))
+               else
+                  Log ("softlink is not broken, recursive nor canonizable: "
+                       & "os_canonical(" & This & ") = "
+                       & "[" & OS_Canonical (This) & "]")))
          elsif Is_Softlink (This) then
             Softlink
          elsif not File_Exists (This) then
