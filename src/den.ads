@@ -181,14 +181,16 @@ package Den with Preelaborate is
    is (Kind (This) = Softlink and then not Exists (Resolve (This)));
    --  Note that this is false for a path that points to nothing
 
-   function Is_Recursive (This : Path) return Boolean
-     with Post => Kind (This) = Softlink or else Is_Recursive'Result = False;
+   --  function Is_Recursive (This : Path) return Boolean
+   --  with Post => Kind (This) = Softlink or else Is_Recursive'Result = False;
    --  Can only be True if this designates a softlink
+   --  Commented as this was lying: a link to a broken link would be reported
+   --  as recursive, but it is not.
 
-   function Is_Resolvable (This : Path) return Boolean
-   is (kind (this) not in Nothing | Softlink
-       or else (Resolve (This) /= This
-                and then Kind (Resolve (This)) in Final_Existing_Kinds));
+   --  function Is_Resolvable (This : Path) return Boolean
+   --  is (kind (this) not in Nothing | Softlink
+   --      or else (Resolve (This) /= This
+   --               and then Kind (Resolve (This)) in Final_Existing_Kinds));
    --  True for non-softlinks or softlinks with a valid target
 
    function Canonical (This : Existing_Path) return Canonical_Path;

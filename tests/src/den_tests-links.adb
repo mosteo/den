@@ -229,7 +229,7 @@ begin
       end if;
 
       -- Verify that the link is broken (not resolvable)
-      if Is_Resolvable (Link_Path) then
+      if not Is_Broken (Link_Path) then
          Put_Line ("ERROR: Link is unexpectedly resolvable");
          raise Program_Error with "Link is unexpectedly resolvable";
       else
@@ -434,7 +434,7 @@ begin
       end if;
 
       -- Verify that the link is broken (not resolvable)
-      if Is_Resolvable (Link_Path) then
+      if not Is_Broken (Link_Path) then
          Put_Line ("ERROR: Link is unexpectedly resolvable");
          raise Program_Error with "Link is unexpectedly resolvable";
       else

@@ -17,7 +17,7 @@ package Den.Filesystem is
      Post => (if Canonizable (This)
                 then Pseudocanonical'Result = Canonical (This));
    --  For broken links, the path will be canonical up to that point, with the
-   --  link target appended. For recursive links, the path will be canonical
+   --  link target appended. For unresolvable links, the path will be canonical
    --  and the simple name will remain the same. For paths with an intermediate
    --  softlink, it will be resolved if resolvable. When there are too many
    --  "..", they're dropped silently. If a broken link contains a string that
@@ -25,7 +25,7 @@ package Den.Filesystem is
 
    --  Both Canonical and Pseudocanonical are expensive as they can make
    --  several system calls. For a cheaper alternative, when absolute normal
-   --  paths suffice, use Absnormal, which does the same but resolving links.
+   --  paths suffice, use Absnormal, which does the same w/o resolving links.
 
    function Full (This : Path) return Absolute_Path renames Pseudocanonical;
    function Full_Name (This : Path) return Absolute_Path renames Full;
@@ -84,7 +84,7 @@ package Den.Filesystem is
    type Delete_Softlink_Options is
      (Fail,
       Delete_Link,
-      Delete_Target,
+      Delete_Target, -- Delete canonical non-link target through any link chain
       Delete_Both);
 
    type Delete_File_Options is record

@@ -181,6 +181,7 @@ package body Den.Filesystem is
       begin
          raise Use_Error with Error ("cannot copy special file: " & Src);
       end Copy_Special;
+
    begin
       Log ("Copy " & Src & P (Kind (Src)'Image)
            & " --> "
@@ -194,7 +195,7 @@ package body Den.Filesystem is
          when Directory =>
             Copy_Dir;
          when Softlink =>
-            if Options.Resolve_Links and then Is_Resolvable (Src) then
+            if Options.Resolve_Links and then Canonizable (Src) then
                Copy (Target (Src), Dst);
             else
                Copy_Link;
@@ -471,20 +472,19 @@ package body Den.Filesystem is
                when Delete_Link =>
                   Unlink (This);
                when Delete_Target =>
-                  if Is_Resolvable (This) then
-                      Delete_Target_If_Regular_File (Resolve (This));
+                  if Canonizable (This) then
+                      Delete_Target_If_Regular_File (Canonical (This));
                   elsif Options.Do_Not_Fail then
                      Log ("skipping unresolvable link target: " & This);
                   else
                      raise Use_Error with
                        Error ("cannot delete target: " & Target (This)
-                              & " (kind: " & Kind (Resolve (This))'Image
                               & " of unresolvable link: "
                               & This);
                   end if;
                when Delete_Both =>
-                    if Is_Resolvable (This) then
-                      Delete_Target_If_Regular_File (Resolve (This));
+                    if Canonizable (This) then
+                      Delete_Target_If_Regular_File (Canonical (This));
                   elsif not Options.Do_Not_Fail then
                      raise Use_Error with
                        Error ("cannot delete target of unresolvable link: "
@@ -552,7 +552,7 @@ package body Den.Filesystem is
                            --  it is a bad path, so simply leave as is.
                            I := I + 1;
                         end if;
-                     elsif Is_Recursive (Head) then
+                     elsif not Canonizable (Head) then
                         --  Leave as is
                         I := I + 1;
                      else -- Valid link

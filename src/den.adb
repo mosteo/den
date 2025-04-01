@@ -248,32 +248,15 @@ package body Den is
 
       package OS renames GNAT.OS_Lib;
 
-      ---------
-      -- Log --
-      ---------
-
-      function Log (Msg : String) return Kinds is
-      begin
-         Log (Msg);
-         return Nothing;
-      end Log;
-
    begin
       return
         (if Resolve_Links then
            (if Kind (This, Resolve_Links => False) /= Softlink then
-                 Kind (This, Resolve_Links => False)
+               Kind (This, Resolve_Links => False)
+            elsif OS_Canonical (This) /= "" then
+               Kind (OS_Canonical (This))
             else
-              (if Is_Broken (This) then
-                    Nothing
-               elsif Is_Recursive (This) then
-                    Softlink
-               elsif OS_Canonical (This) /= "" then
-                    Kind (OS_Canonical (This))
-               else
-                  Log ("softlink is not broken, recursive nor canonizable: "
-                       & "os_canonical(" & This & ") = "
-                       & "[" & OS_Canonical (This) & "]")))
+               Nothing)
          elsif Is_Softlink (This) then
             Softlink
          elsif not File_Exists (This) then
@@ -458,11 +441,11 @@ package body Den is
    -- Is_Recursive --
    ------------------
 
-   function Is_Recursive (This : Path) return Boolean
-   is (if not Is_Softlink (This)
-       then False
-       else Exists (Resolve (This)) and then
-         (OS_Canonical (This) = "" or else Is_Softlink (OS_Canonical (This))));
+   --  function Is_Recursive (This : Path) return Boolean
+   --  is (if not Is_Softlink (This)
+   --      then False
+   --      else Exists (Resolve (This)) and then
+   --    (OS_Canonical (This) = "" or else Is_Softlink (OS_Canonical (This))));
 
    -------------------
    -- Target_Length --
@@ -530,8 +513,8 @@ package body Den is
           when Special   => " (special)",
           when Softlink  =>
              " --> " & Target (This) &
-               (if Is_Broken (This)    then " (broken)"    else "") &
-               (if Is_Recursive (This) then " (recursive)" else ""),
+               (if Is_Broken (This)    then " (broken)"    else ""), -- &
+               --  (if Is_Recursive (This) then " (recursive)" else ""),
           when Nothing   => " (not found)",
           when Directory => "" & Dir_Separator,
           when File      => "");
