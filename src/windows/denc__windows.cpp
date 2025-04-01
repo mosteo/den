@@ -65,7 +65,7 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
         std::vector<char> buffer(bufsiz, '\0');
 
         // Returns buffer used or needed, or 0 for error
-        DWORD dwRes = GetFinalPathNameByHandle(
+        DWORD dwRes = GetFinalPathNameByHandleA(
             hFile,
             buffer.data(), bufsiz, VOLUME_NAME_DOS);
             // NOTE: recursive links resolve to themselves in Windows!!
@@ -74,8 +74,8 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
         CloseHandle(hFile);
 
         if (dwRes == 0) {
-            // Link is broken
-            return 1;
+            // Link is broken or some other error
+            return abs(GetLastError());
         } else if (dwRes >= bufsiz) {
             // Not enough buffer
             return ERR_BUFFER_TOO_SMALL;
