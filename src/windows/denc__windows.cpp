@@ -75,7 +75,7 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
 
         if (dwRes == 0) {
             // Link is broken or some other error
-            return abs(GetLastError());
+            return GetLastError(); // Always a positive error code
         } else if (dwRes >= bufsiz) {
             // Not enough buffer
             return ERR_BUFFER_TOO_SMALL;
