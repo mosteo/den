@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -54,10 +55,18 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
         // Obtain the file handle
         HANDLE hFile = CreateFileA(
                 inputPath,
-                GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+                GENERIC_READ,
+                FILE_SHARE_READ,
+                NULL,
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS,
+                NULL);
 
         if (hFile == INVALID_HANDLE_VALUE) {
-            return 1;
+            fprintf(stderr, "Error getting canonical path of: %s\n", inputPath);
+            fprintf(stderr, "From cwd: %s\n", std::filesystem::current_path().string().c_str());
+            fprintf(stderr, "Error: %lu\n", GetLastError());
+            return GetLastError(); // Always a positive error code
         }
 
         // Use a char array instead of std::string to avoid const_cast issues
@@ -92,6 +101,11 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
             if (path.size() >= bufsiz) {
                 return ERR_BUFFER_TOO_SMALL;
             }
+
+            // DEBUG
+            fprintf(stderr, "SUCCESS getting canonical path of: %s\n", inputPath);
+            fprintf(stderr, "From cwd: %s\n", std::filesystem::current_path().string().c_str());
+            fprintf(stderr, "Canonical path: %s\n", path.c_str());
 
             // Copy from buffer to fullPath
             strcpy(fullPath, path.c_str());

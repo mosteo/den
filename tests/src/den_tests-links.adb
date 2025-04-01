@@ -115,6 +115,18 @@ begin
       else
          Put_Line ("SUCCESS: Link points to the correct target");
       end if;
+
+      -- Verify original link is canonizable
+      Assert (Canonizable (".." / "cases" / "links" / "b"));
+
+      -- Verify the canonical target is the expected one
+      if Canonical (Link_Path) /= Canonical (Target_File) then
+         Put_Line ("ERROR: Link points to " & Canonical (Link_Path) &
+                   " instead of " & Canonical (Target_File));
+         raise Program_Error with "Link points to the wrong target";
+      else
+         Put_Line ("SUCCESS: Link points to the correct target");
+      end if;
    end;
 
    -- Test 2: Create a link to an existing directory
