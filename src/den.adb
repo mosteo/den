@@ -5,6 +5,8 @@ with Ada.IO_Exceptions;
 
 with C_Strings;
 
+with GNAT.IO;
+
 with System;
 
 package body Den is
@@ -31,6 +33,27 @@ package body Den is
       end if;
    end Debug;
 
+   ---------
+   -- Log --
+   ---------
+
+   procedure Log (Message  : String;
+                  Location : String := GNAT.Source_Info.Source_Location)
+   is
+   begin
+      if Debug then
+         GNAT.IO.Put_Line ("[DEN] " & Location & ": " & Message);
+      end if;
+   end Log;
+
+   -----------
+   -- Error --
+   -----------
+
+   function Error (Info     : String;
+                   Location : String := GNAT.Source_Info.Source_Location)
+                   return String
+   is (Location & ": " & Info);
 
    ---------------
    -- Operators --
@@ -391,21 +414,24 @@ package body Den is
       loop
          declare
             Cbuf : C_Strings.C_String := C_Strings.Buffer (Bufsize);
-         begin
-            case C_Canonical (C_Strings.To_C (This).To_Ptr,
+            Code : constant C.int
+              := C_Canonical (C_Strings.To_C (This).To_Ptr,
                               Cbuf.To_Ptr,
-                              Cbuf.C_Size)
-            is
+                              Cbuf.C_Size);
+         begin
+            case Code is
                when 0 =>
                   return Cbuf.To_Ada;
                when -1 =>
                   if Integer'Last / 2 < Bufsize then
+                     Log ("Buffer too small for canonical path");
                      return "";
                   else
                      Bufsize := Bufsize * 2;
                   end if;
                   --  And try again
                when 1 .. C.int'Last =>
+                  Log ("c_canonical error code:" & Code'Image);
                   return "";
                when others =>
                   raise Program_Error with "should be unreachable";

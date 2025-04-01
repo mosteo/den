@@ -1,6 +1,7 @@
 with AAA.Strings;
 
 with GNAT.OS_Lib;
+private with GNAT.Source_Info;
 
 package Den with Preelaborate is
 
@@ -283,5 +284,12 @@ private
    --  This exists, or "" otherwise. This is not a "clever" function like
    --  GNAT.OS_Lib.Normalize_Pathname or std::filesystem::weak_canonical.
    --  To preserve cross-platform behavior, we do that in Pseudocanonical.
+
+   procedure Log (Message  : String;
+                  Location : String := GNAT.Source_Info.Source_Location);
+
+   function Error (Info     : String;
+                   Location : String := GNAT.Source_Info.Source_Location)
+                   return String;
 
 end Den;

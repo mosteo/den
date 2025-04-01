@@ -8,7 +8,6 @@ with Den.Walk;
 
 with GNAT.IO;
 with GNAT.OS_Lib;
-with GNAT.Source_Info; use GNAT.Source_Info;
 
 --------------------
 -- Den.Filesystem --
@@ -20,28 +19,6 @@ package body Den.Filesystem is
    package OS   renames GNAT.OS_Lib;
 
    use Den.Operators;
-
-   ---------
-   -- Log --
-   ---------
-
-   procedure Log (Message  : String;
-                  Location : String := Source_Location)
-   is
-   begin
-      if Debug then
-         GNAT.IO.Put_Line ("[DEN] " & Location & ": " & Message);
-      end if;
-   end Log;
-
-   -----------
-   -- Error --
-   -----------
-
-   function Error (Info     : String;
-                   Location : String := Source_Location)
-                   return String
-   is (Location & ": " & Info);
 
    ---------------
    -- Put_Error --
