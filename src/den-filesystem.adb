@@ -338,12 +338,42 @@ package body Den.Filesystem is
             Target
          else
             Absnormal (Parent (Absnormal (From)) / Target));
+
+      Rel_Target : constant Path :=
+         (if Options.Relative_Target_From_Absolute_Path then
+               Relative (Parent (Absolute (From)), Abs_Target)
+          else
+               Abs_Target);
    begin
       Log ("linking: " & From
            & " --> "
            & Target
            & P ("absolute target: " & Abs_Target & P (Kind (Abs_Target)'Image))
            & " ...");
+
+      --  Divert if the relative path safety is enabled
+      if Options.Relative_Target_From_Absolute_Path then
+         if not Is_Absolute (Target) then
+            raise Use_Error with
+              Error ("target must be absolute with safety option but it is: "
+                     & Target);
+         elsif Is_Absolute (Rel_Target) then
+            raise Use_Error with
+              Error ("could not find a relative path from " & From
+                     & " to " & Target);
+         else
+            declare
+               New_Options : Link_Options := Options;
+            begin
+               New_Options.Relative_Target_From_Absolute_Path := False;
+               Link
+                 (From    => From,
+                  Target  => Rel_Target,
+                  Options => New_Options);
+               return; -- EARLY EXIT
+            end;
+         end if;
+      end if;
 
       if Kind (From) /= Nothing then
          if Options.Overwrite_Existing and then Kind (From) = Softlink

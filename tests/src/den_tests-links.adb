@@ -588,6 +588,112 @@ begin
       end if;
    end;
 
+   -- Test 10: Create a link with Relative_Target_From_Absolute_Path => True
+   -- and an absolute target
+   Reset_Test_Dir;
+   declare
+      Link_Path   : constant Path := Test_Dir / "link_to_abs_file";
+      Target_File : constant Path := Test_Dir / "abs_target_file.txt";
+      Abs_Target  : constant Path := Absolute (Target_File);
+      Options     : constant Link_Options :=
+         (Relative_Target_From_Absolute_Path => True, others => <>);
+      Expected_Rel_Target : constant Path :=
+         Relative (Parent (Link_Path), Abs_Target);
+   begin
+      Put_Line ("Test 10: Create a link with Relative_Target_From_Absolute_Path => True " &
+                "and an absolute target");
+
+      -- Create a target file
+      Create_Test_File (Target_File);
+
+      -- Verify that the target file exists
+      if not Exists (Target_File) then
+         Put_Line ("ERROR: Failed to create target file");
+         raise Program_Error with "Target file creation failed";
+      end if;
+
+      -- Create a link to the target file using an absolute path with Relative_Target_From_Absolute_Path => True
+      Link (Link_Path, Abs_Target, Options);
+
+      -- Verify that the link exists
+      if not Exists (Link_Path) then
+         Put_Line ("ERROR: Link was not created");
+         raise Program_Error with "Link creation failed";
+      else
+         Put_Line ("SUCCESS: Link was successfully created");
+      end if;
+
+      -- Verify that the link is a softlink
+      if Kind (Link_Path) /= Softlink then
+         Put_Line ("ERROR: Created link is not a softlink");
+         raise Program_Error with "Created link is not a softlink";
+      else
+         Put_Line ("SUCCESS: Created link is a softlink");
+      end if;
+
+      -- Verify the link contents match the expected relative path
+      if Target (Link_Path) /= Expected_Rel_Target then
+         Put_Line ("ERROR: Link points to " & Target (Link_Path) &
+                   " instead of " & Expected_Rel_Target);
+         raise Program_Error with
+            "Link points to the wrong target: " & Target(Link_Path);
+      else
+         Put_Line ("SUCCESS: Link points to the correct relative target");
+      end if;
+
+      -- Verify that the link resolves to the target file
+      if Resolve (Link_Path) /= Target_File then
+         Put_Line ("ERROR: Link resolves to " & Resolve (Link_Path) &
+                   " instead of " & Target_File);
+         raise Program_Error with "Link does not resolve to the correct target";
+      else
+         Put_Line ("SUCCESS: Link resolves to the correct target");
+      end if;
+   end;
+
+   -- Test 11: Create a link with Relative_Target_From_Absolute_Path => True and a relative target
+   Reset_Test_Dir;
+   declare
+      Link_Path   : constant Path := Test_Dir / "link_to_rel_file";
+      Target_File : constant Path := Test_Dir / "rel_target_file.txt";
+      Rel_Target  : constant Path := Simple_Name (Target_File);
+      Options     : constant Link_Options :=
+         (Relative_Target_From_Absolute_Path => True, others => <>);
+   begin
+      Put_Line ("Test 11: Create a link with Relative_Target_From_Absolute_Path => True " &
+                "and a relative target");
+
+      -- Create a target file
+      Create_Test_File (Target_File);
+
+      -- Verify that the target file exists
+      if not Exists (Target_File) then
+         Put_Line ("ERROR: Failed to create target file");
+         raise Program_Error with "Target file creation failed";
+      end if;
+
+      -- Try to create a link with a relative target and Relative_Target_From_Absolute_Path => True
+      -- This should raise an exception because the target must be absolute
+      begin
+         Link (Link_Path, Rel_Target, Options);
+         Put_Line ("ERROR: No exception raised when creating link with " &
+                   "Relative_Target_From_Absolute_Path => True and a relative target");
+         raise Program_Error with "Link creation did not raise an exception";
+      exception
+         when others =>
+            Put_Line ("SUCCESS: Exception raised when creating link with " &
+                      "Relative_Target_From_Absolute_Path => True and a relative target");
+      end;
+
+      -- Verify that the link was not created
+      if Exists (Link_Path) then
+         Put_Line ("ERROR: Link was unexpectedly created");
+         raise Program_Error with "Link was unexpectedly created";
+      else
+         Put_Line ("SUCCESS: Link was not created");
+      end if;
+   end;
+
    -- Clean up
    Put_Line ("Cleaning up test directory");
    Delete_Tree (Test_Dir);
