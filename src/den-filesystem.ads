@@ -117,10 +117,20 @@ package Den.Filesystem is
    type Link_Options is record
       Allow_Missing_Target : Boolean := False;
       --  If the target is missing, a broken link will be created anyway
+
+      Overwrite_Existing   : Boolean := False;
+      --  Remove an existing link (but not other kind of files)
+
+      Relative_Target_From_Absolute_Path : Boolean := False;
+      --  With this safety enabled, the target argument must be an absolute
+      --  path but the link will be created with a relative path. If no
+      --  relative path can be found, an exception will be raised.
    end record;
 
    procedure Link (From, Target : Path;
-                   Options      : Link_Options := (others => <>));
+                   Options      : Link_Options := (others => <>)) with
+   Pre => (if Options.Relative_Target_From_Absolute_Path
+              then Is_Absolute (Target));
    --  From is the link path, Target is the pointed to path. Target should
    --  either be absolute or relative to From parent, as it is stored as-as as the
    --  target link. You can use the Relative function to find a relative path
