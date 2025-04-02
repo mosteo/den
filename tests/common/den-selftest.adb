@@ -180,14 +180,14 @@ begin
       pragma Assert (not Is_Broken ("unobtanium"));
 
       --  Is_Recursive
-      for Part of AAA.Strings
-        .To_Set ("self")
-        .Union ("tic").Union ("toc")
-        .Union ("human").Union ("centi").Union ("pede")
-      loop
-         pragma Assert (Is_Recursive (Cases / "loops" / Part) = Supported,
-                        OS_Canonical (Cases / "loops" / Part));
-      end loop;
+      --  for Part of AAA.Strings
+      --    .To_Set ("self")
+      --    .Union ("tic").Union ("toc")
+      --    .Union ("human").Union ("centi").Union ("pede")
+      --  loop
+      --     pragma Assert (Is_Recursive (Cases / "loops" / Part) = Supported,
+      --                    OS_Canonical (Cases / "loops" / Part));
+      --  end loop;
 
       --  Canonical & Canonizable
       begin

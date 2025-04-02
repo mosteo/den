@@ -1,6 +1,9 @@
+pragma Warnings (Off);
+
 with Ada.Text_IO;
 
 with Den.Filesystem;
+with Den.Informer;
 
 procedure Den_Tests.Deletions is
    use Ada.Text_IO;
