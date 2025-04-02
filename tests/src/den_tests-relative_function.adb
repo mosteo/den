@@ -4,7 +4,7 @@ with Den.Filesystem;
 
 pragma Warnings (Off);
 
-procedure Den_Tests.Relative is
+procedure Den_Tests.Relative_Function is
    use Ada.Text_IO;
    use Den;
    use Den.Filesystem;
@@ -425,4 +425,4 @@ begin
    Delete_Tree (Test_Dir);
 
    Put_Line ("Relative path tests completed successfully");
-end Den_Tests.Relative;
+end Den_Tests.Relative_Function;
