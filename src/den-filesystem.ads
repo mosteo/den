@@ -122,7 +122,7 @@ package Den.Filesystem is
    procedure Link (From, Target : Path;
                    Options      : Link_Options := (others => <>));
    --  From is the link path, Target is the pointed to path. Target should
-   --  either be absolute or relative to From, as it is stored as-as as the
+   --  either be absolute or relative to From parent, as it is stored as-as as the
    --  target link. You can use the Relative function to find a relative path
    --  from From to Target.
 

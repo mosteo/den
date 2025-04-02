@@ -339,7 +339,7 @@ package body Den.Filesystem is
    procedure Link (From, Target : Path;
                    Options      : Link_Options := (others => <>))
    is
-      function C_Create_Link (Target, Name : C_Strings.Chars_Ptr)
+      function C_Create_Link (Target, Name, Abs_Target : C_Strings.Chars_Ptr)
                               return C_Strings.C.int
         with Import, Convention => C;
       use C_Strings;
@@ -347,15 +347,13 @@ package body Den.Filesystem is
       Abs_Target : constant Path :=
         (if Is_Absolute (Target) then
             Target
-         elsif Has_Parent (From) then
-            Parent (From) / Target
          else
-            Current_Directory / Target);
+            Absnormal (Parent (Absnormal (From)) / Target));
    begin
       Log ("linking: " & From
            & " --> "
-           & Target & P (Kind (Target)'Image)
-           & P ("from ./: " & Abs_Target)
+           & Target
+           & P ("absolute target: " & Abs_Target & P (Kind (Abs_Target)'Image))
            & " ...");
 
       if Kind (From) /= Nothing then
@@ -375,7 +373,8 @@ package body Den.Filesystem is
                     Integer
                       (C_Create_Link
                          (To_C (Target).To_Ptr,
-                          To_C (From).To_Ptr));
+                          To_C (From).To_Ptr,
+                          To_C (Abs_Target).To_Ptr));
       begin
          if Result /= 0 then
             raise Use_Error with
@@ -383,6 +382,9 @@ package body Den.Filesystem is
                      & From & " --> " & Target & P (Kind (Target)'Image)
                      & " (error: " & Result'Image & ")");
          end if;
+
+         pragma Assert (Kind (From) = Softlink,
+                        "link not created: " & From & P (Kind (From)'Image));
       end;
 
       Log ("linking: " & From & P (Kind (From)'Image)

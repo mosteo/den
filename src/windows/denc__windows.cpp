@@ -284,15 +284,15 @@ c_delete_link (const char *path)
 }
 
 extern "C"
-int c_create_link (const char *target, const char *name)
+int c_create_link (const char *target, const char *name, const char *abs_target)
 {
     // Create a soft link
 
     // Use the newer version that allows unprivileged users to create symlinks
     DWORD flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
 
-    // Check if the target is a directory
-    if (GetFileAttributesA(target) & FILE_ATTRIBUTE_DIRECTORY)
+    // Check if the target is a directory, if it exists.
+    if (GetFileAttributesA(abs_target) & FILE_ATTRIBUTE_DIRECTORY)
     {
         flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
     }

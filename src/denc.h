@@ -21,4 +21,6 @@ extern "C" int c_copy_link (const char *target, const char *name);
 extern "C" int c_delete_link (const char *path);
 
 // Returns 0 on success, any other for error
-extern "C" int c_create_link (const char *target, const char *name);
+// Abs target is passed to allow easy detection of directory targets (needed on
+// Windows).
+extern "C" int c_create_link (const char *target, const char *name, const char *abs_target);
