@@ -8,13 +8,13 @@ package Den_Config is
    Crate_Version : constant String := "0.1.0-dev";
    Crate_Name : constant String := "den";
 
-   Alire_Host_OS : constant String := "windows";
+   Alire_Host_OS : constant String := "linux";
 
    Alire_Host_Arch : constant String := "x86_64";
 
-   Alire_Host_Distro : constant String := "msys2";
+   Alire_Host_Distro : constant String := "ubuntu";
 
    type Build_Profile_Kind is (release, validation, development);
-   Build_Profile : constant Build_Profile_Kind := development;
+   Build_Profile : constant Build_Profile_Kind := validation;
 
 end Den_Config;

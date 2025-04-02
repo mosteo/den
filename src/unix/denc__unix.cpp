@@ -92,7 +92,7 @@ int c_delete_link (const char *path)
 }
 
 extern "C"
-int c_create_link (const char *target, const char *name)
+int c_create_link (const char *target, const char *name, const bool is_dir)
 {
     return symlink(target, name);
 }

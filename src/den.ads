@@ -231,7 +231,7 @@ package Den with Preelaborate is
    is (Parent (Canonical (This)))
      with Pre => not Is_Root (This);
 
-   function Target_Length (This : Path) return Positive
+   function Target_Length (This : Path) return Natural
      with Pre => Kind (This) = Softlink;
    --  The length of a softlink target name. Not generally useful to clients
    --  but who knows...

@@ -3,7 +3,7 @@
 with Ada.Environment_Variables;
 with Ada.IO_Exceptions;
 
-with C_Strings;
+with Den.OS;
 
 with GNAT.IO;
 
@@ -11,7 +11,6 @@ with System;
 
 package body Den is
 
-   package C renames C_Strings.C;
    --  package Dirs renames Ada.Directories;
    package IOex renames Ada.IO_Exceptions;
 
@@ -130,6 +129,10 @@ package body Den is
                  and then (This (This'First) in Drive_Letter))));
    end String_Is_Root;
 
+   -----------------
+   -- Is_Absolute --
+   -----------------
+
    function Is_Absolute (This : Path) return Boolean
    is (GNAT.OS_Lib.Is_Absolute_Path (This)
        or else
@@ -151,11 +154,8 @@ package body Den is
 
    function Is_Softlink (This : Path) return Boolean
    is
-      function C_Is_Softlink (Link : C_Strings.Chars_Ptr)
-                              return C_Strings.C.int
-        with Import, Convention => C;
    begin
-      return C_Is_Softlink (C_Strings.To_C (This).To_Ptr) not in 0;
+      return OS.Is_Softlink (This);
    end Is_Softlink;
 
    ---------------
@@ -400,41 +400,14 @@ package body Den is
    --  if possible. In case of error (broken, recursive links?), it will return
    --  "".
    function OS_Canonical (This : Path) return String is
-      function C_Canonical (Target, Buffer : C_Strings.Chars_Ptr;
-                            Bufsiz         : C.size_t)
-                            return C.int
-        with Import, Convention => C;
-
-      use type C_Strings.C.int;
-      Bufsize : Integer := 32768; -- Theoretically, this is Windows max
    begin
-      loop
-         declare
-            Cbuf : C_Strings.C_String := C_Strings.Buffer (Bufsize);
-            Code : constant C.int
-              := C_Canonical (C_Strings.To_C (This).To_Ptr,
-                              Cbuf.To_Ptr,
-                              Cbuf.C_Size);
-         begin
-            case Code is
-               when 0 =>
-                  return Cbuf.To_Ada;
-               when -1 =>
-                  if Integer'Last / 2 < Bufsize then
-                     Log ("Buffer too small for canonical path");
-                     return "";
-                  else
-                     Bufsize := Bufsize * 2;
-                  end if;
-                  --  And try again
-               when 1 .. C.int'Last =>
-                  Log ("c_canonical error code:" & Code'Image);
-                  return "";
-               when others =>
-                  raise Program_Error with "should be unreachable";
-            end case;
-         end;
-      end loop;
+      begin
+         return OS.Canonical (This);
+      exception
+         when Ada.IO_Exceptions.Use_Error =>
+            Log ("Cannot canonicalize path: " & This);
+            return "";
+      end;
    end OS_Canonical;
 
    ------------------
@@ -451,15 +424,12 @@ package body Den is
    -- Target_Length --
    -------------------
 
-   function Target_Length (This : Path) return Positive is
-      function C_Link_Len (Link : C_Strings.Chars_Ptr)
-                           return C_Strings.C.size_t
-        with Import, Convention => C;
+   function Target_Length (This : Path) return Natural is
    begin
       if not Is_Softlink (This) then
          raise Constraint_Error with "Not a softlink: " & This;
       end if;
-      return Positive (C_Link_Len (C_Strings.To_C (This).To_Ptr));
+      return OS.Link_Length (This);
    end Target_Length;
 
    ------------
@@ -468,37 +438,9 @@ package body Den is
 
    function Target (This : Path) return String
    is
-      use C_Strings;
-      use type C.int;
-
-      function C_Link_Target (This, Buffer : Chars_Ptr;
-                              Buffer_Length : C.size_t)
-                              return C.int
-        with Import, Convention => C;
    begin
       if Is_Softlink (This) then
-         loop
-            --  There's a race condition in which a changing target of
-            --  increased length cannot be retrieved; we retry until satisfied.
-            declare
-               Cbuf : C_String := C_Strings.Buffer (Target_Length (This) + 1);
-               Code : constant C.int
-                 := C_Link_Target (To_C (This).To_Ptr,
-                                   Cbuf.To_Ptr,
-                                   Cbuf.C_Size);
-            begin
-               case Code is
-                  when 0 =>
-                     return Cbuf.To_Ada;
-                  when -1 =>
-                     null; -- Retry with new buffer size
-                  when others =>
-                     raise Program_Error
-                       with "cannot retrieve link target, error: "
-                            & Code'Image;
-               end case;
-            end;
-         end loop;
+         return OS.Link_Target (This);
       else
          return This;
       end if;
