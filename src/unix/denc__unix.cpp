@@ -83,12 +83,6 @@ extern "C" int c_link_target (const char *path, char *buf, size_t bufsiz) {
 }
 
 extern "C"
-int c_copy_link (const char *target, const char *name)
-{
-    return symlink(target, name);
-}
-
-extern "C"
 int c_delete_link (const char *path)
 {
     if (!c_is_softlink (path))

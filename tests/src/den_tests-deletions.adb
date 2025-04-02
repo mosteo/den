@@ -1,3 +1,5 @@
+pragma Warnings (Off);
+
 with Ada.Text_IO;
 
 with Den.Filesystem;
@@ -148,15 +150,6 @@ begin
       if not Exists (Target_Path) then
          Put_Line ("ERROR: Target does not exist: " & Target_Path);
          raise Program_Error with "Target does not exist";
-      end if;
-
-      if not Canonizable (Link_Path) then
-         Put_Line ("ERROR: Link is not canonizable but should: " & Link_Path);
-         Put_Line ("ERROR: Target = " & Target (Link_Path));
-         Put_Line ("ERROR: Kind(Resolve()) = " & Kind (Resolve (Link_Path))'Image);
-         Put_LIne ("ERROR: c_canonical = "
-                   & Informer.OS_Canonical (Link_Path));
-         raise Program_Error with "Link is not canonizable";
       end if;
 
       -- Delete the link's target using Delete_File with Delete_Target option

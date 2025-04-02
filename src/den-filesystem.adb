@@ -4,10 +4,13 @@ with Ada.IO_Exceptions; use Ada.IO_Exceptions;
 with C_Strings;
 
 with Den.Iterators;
+with Den.OS;
 with Den.Walk;
 
 with GNAT.IO;
 with GNAT.OS_Lib;
+
+with Interfaces.C;
 
 --------------------
 -- Den.Filesystem --
@@ -15,8 +18,8 @@ with GNAT.OS_Lib;
 
 package body Den.Filesystem is
 
-   package Dirs renames Ada.Directories;
-   package OS   renames GNAT.OS_Lib;
+   package Dirs   renames Ada.Directories;
+   package OS_Lib renames GNAT.OS_Lib;
 
    use Den.Operators;
 
@@ -130,10 +133,6 @@ package body Den.Filesystem is
       ---------------
 
       procedure Copy_Link is
-         function C_Copy_Link (Target, Name : C_Strings.Chars_Ptr)
-                               return C_Strings.C.int
-           with Import, Convention => C;
-         use C_Strings;
       begin
          case Kind (Dst) is
             when Nothing =>
@@ -155,22 +154,11 @@ package body Den.Filesystem is
                         & Dst);
          end case;
 
-         --  Here we must copy
-
-         declare
-            Result : constant Integer :=
-                       Integer
-                         (C_Copy_Link
-                            (To_C (Target (Src)).To_Ptr,
-                             To_C (Dst).To_Ptr));
-         begin
-            if Result /= 0 then
-               raise Use_Error
-                 with Error ("cannot create softlink "
-                             & Dst & " --> " & Target (Src)
-                             & " (error: " & Result'Image & ")");
-            end if;
-         end;
+         --  Here we recreate the link. Target might not yet be in place.
+         OS.Create_Link
+           (Name   => Dst,
+            Target => Target (Src),
+            Is_Dir => Kind (Src, Resolve_Links => True) = Directory);
       end Copy_Link;
 
       ------------------
@@ -223,7 +211,7 @@ package body Den.Filesystem is
          return;
       end if;
 
-      OS.Copy_File_Attributes
+      OS_Lib.Copy_File_Attributes
         (From             => Src,
          To               => Dst,
          Success          => OK,
@@ -339,7 +327,8 @@ package body Den.Filesystem is
    procedure Link (From, Target : Path;
                    Options      : Link_Options := (others => <>))
    is
-      function C_Create_Link (Target, Name, Abs_Target : C_Strings.Chars_Ptr)
+      function C_Create_Link (Target, Name : C_Strings.Chars_Ptr;
+                              Is_Dir : Interfaces.C.C_bool)
                               return C_Strings.C.int
         with Import, Convention => C;
       use C_Strings;
@@ -369,12 +358,13 @@ package body Den.Filesystem is
       end if;
 
       declare
+         use Interfaces.C;
          Result : constant Integer :=
                     Integer
                       (C_Create_Link
                          (To_C (Target).To_Ptr,
                           To_C (From).To_Ptr,
-                          To_C (Abs_Target).To_Ptr));
+                          C_bool (Kind (Abs_Target) = Directory)));
       begin
          if Result /= 0 then
             raise Use_Error with
