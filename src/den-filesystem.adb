@@ -4,11 +4,13 @@ with Ada.IO_Exceptions; use Ada.IO_Exceptions;
 with C_Strings;
 
 with Den.Iterators;
+with Den.OS;
 with Den.Walk;
 
 with GNAT.IO;
 with GNAT.OS_Lib;
-with GNAT.Source_Info; use GNAT.Source_Info;
+
+with Interfaces.C;
 
 --------------------
 -- Den.Filesystem --
@@ -16,32 +18,10 @@ with GNAT.Source_Info; use GNAT.Source_Info;
 
 package body Den.Filesystem is
 
-   package Dirs renames Ada.Directories;
-   package OS   renames GNAT.OS_Lib;
+   package Dirs   renames Ada.Directories;
+   package OS_Lib renames GNAT.OS_Lib;
 
    use Den.Operators;
-
-   ---------
-   -- Log --
-   ---------
-
-   procedure Log (Message  : String;
-                  Location : String := Source_Location)
-   is
-   begin
-      if Debug then
-         GNAT.IO.Put_Line ("[DEN] " & Location & ": " & Message);
-      end if;
-   end Log;
-
-   -----------
-   -- Error --
-   -----------
-
-   function Error (Info     : String;
-                   Location : String := Source_Location)
-                   return String
-   is (Location & ": " & Info);
 
    ---------------
    -- Put_Error --
@@ -153,10 +133,6 @@ package body Den.Filesystem is
       ---------------
 
       procedure Copy_Link is
-         function C_Copy_Link (Target, Name : C_Strings.Chars_Ptr)
-                               return C_Strings.C.int
-           with Import, Convention => C;
-         use C_Strings;
       begin
          case Kind (Dst) is
             when Nothing =>
@@ -178,22 +154,11 @@ package body Den.Filesystem is
                         & Dst);
          end case;
 
-         --  Here we must copy
-
-         declare
-            Result : constant Integer :=
-                       Integer
-                         (C_Copy_Link
-                            (To_C (Target (Src)).To_Ptr,
-                             To_C (Dst).To_Ptr));
-         begin
-            if Result /= 0 then
-               raise Use_Error
-                 with Error ("cannot create softlink "
-                             & Dst & " --> " & Target (Src)
-                             & " (error: " & Result'Image & ")");
-            end if;
-         end;
+         --  Here we recreate the link. Target might not yet be in place.
+         OS.Create_Link
+           (Name   => Dst,
+            Target => Target (Src),
+            Is_Dir => Kind (Src, Resolve_Links => True) = Directory);
       end Copy_Link;
 
       ------------------
@@ -204,6 +169,7 @@ package body Den.Filesystem is
       begin
          raise Use_Error with Error ("cannot copy special file: " & Src);
       end Copy_Special;
+
    begin
       Log ("Copy " & Src & P (Kind (Src)'Image)
            & " --> "
@@ -217,7 +183,7 @@ package body Den.Filesystem is
          when Directory =>
             Copy_Dir;
          when Softlink =>
-            if Options.Resolve_Links and then Is_Resolvable (Src) then
+            if Options.Resolve_Links and then Canonizable (Src) then
                Copy (Target (Src), Dst);
             else
                Copy_Link;
@@ -245,7 +211,7 @@ package body Den.Filesystem is
          return;
       end if;
 
-      OS.Copy_File_Attributes
+      OS_Lib.Copy_File_Attributes
         (From             => Src,
          To               => Dst,
          Success          => OK,
@@ -361,7 +327,8 @@ package body Den.Filesystem is
    procedure Link (From, Target : Path;
                    Options      : Link_Options := (others => <>))
    is
-      function C_Create_Link (Target, Name : C_Strings.Chars_Ptr)
+      function C_Create_Link (Target, Name : C_Strings.Chars_Ptr;
+                              Is_Dir : Interfaces.C.C_bool)
                               return C_Strings.C.int
         with Import, Convention => C;
       use C_Strings;
@@ -369,15 +336,13 @@ package body Den.Filesystem is
       Abs_Target : constant Path :=
         (if Is_Absolute (Target) then
             Target
-         elsif Has_Parent (From) then
-            Parent (From) / Target
          else
-            Current_Directory / Target);
+            Absnormal (Parent (Absnormal (From)) / Target));
    begin
       Log ("linking: " & From
            & " --> "
-           & Target & P (Kind (Target)'Image)
-           & P ("from ./: " & Abs_Target)
+           & Target
+           & P ("absolute target: " & Abs_Target & P (Kind (Abs_Target)'Image))
            & " ...");
 
       if Kind (From) /= Nothing then
@@ -393,11 +358,13 @@ package body Den.Filesystem is
       end if;
 
       declare
+         use Interfaces.C;
          Result : constant Integer :=
                     Integer
                       (C_Create_Link
                          (To_C (Target).To_Ptr,
-                          To_C (From).To_Ptr));
+                          To_C (From).To_Ptr,
+                          C_bool (Kind (Abs_Target) = Directory)));
       begin
          if Result /= 0 then
             raise Use_Error with
@@ -405,6 +372,9 @@ package body Den.Filesystem is
                      & From & " --> " & Target & P (Kind (Target)'Image)
                      & " (error: " & Result'Image & ")");
          end if;
+
+         pragma Assert (Kind (From) = Softlink,
+                        "link not created: " & From & P (Kind (From)'Image));
       end;
 
       Log ("linking: " & From & P (Kind (From)'Image)
@@ -494,20 +464,19 @@ package body Den.Filesystem is
                when Delete_Link =>
                   Unlink (This);
                when Delete_Target =>
-                  if Is_Resolvable (This) then
-                      Delete_Target_If_Regular_File (Resolve (This));
+                  if Canonizable (This) then
+                      Delete_Target_If_Regular_File (Canonical (This));
                   elsif Options.Do_Not_Fail then
                      Log ("skipping unresolvable link target: " & This);
                   else
                      raise Use_Error with
                        Error ("cannot delete target: " & Target (This)
-                              & " (kind: " & Kind (Resolve (This))'Image
                               & " of unresolvable link: "
                               & This);
                   end if;
                when Delete_Both =>
-                    if Is_Resolvable (This) then
-                      Delete_Target_If_Regular_File (Resolve (This));
+                    if Canonizable (This) then
+                      Delete_Target_If_Regular_File (Canonical (This));
                   elsif not Options.Do_Not_Fail then
                      raise Use_Error with
                        Error ("cannot delete target of unresolvable link: "
@@ -575,7 +544,7 @@ package body Den.Filesystem is
                            --  it is a bad path, so simply leave as is.
                            I := I + 1;
                         end if;
-                     elsif Is_Recursive (Head) then
+                     elsif not Canonizable (Head) then
                         --  Leave as is
                         I := I + 1;
                      else -- Valid link

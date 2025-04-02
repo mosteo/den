@@ -1,4 +1,5 @@
 #include <cstdio>
+#include <filesystem>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -54,10 +55,18 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
         // Obtain the file handle
         HANDLE hFile = CreateFileA(
                 inputPath,
-                GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+                GENERIC_READ,
+                FILE_SHARE_READ,
+                NULL,
+                OPEN_EXISTING,
+                FILE_FLAG_BACKUP_SEMANTICS,
+                NULL);
 
         if (hFile == INVALID_HANDLE_VALUE) {
-            return 1;
+            fprintf(stderr, "Error getting canonical path of: %s\n", inputPath);
+            fprintf(stderr, "From cwd: %s\n", std::filesystem::current_path().string().c_str());
+            fprintf(stderr, "Error: %lu\n", GetLastError());
+            return GetLastError(); // Always a positive error code
         }
 
         // Use a char array instead of std::string to avoid const_cast issues
@@ -65,7 +74,7 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
         std::vector<char> buffer(bufsiz, '\0');
 
         // Returns buffer used or needed, or 0 for error
-        DWORD dwRes = GetFinalPathNameByHandle(
+        DWORD dwRes = GetFinalPathNameByHandleA(
             hFile,
             buffer.data(), bufsiz, VOLUME_NAME_DOS);
             // NOTE: recursive links resolve to themselves in Windows!!
@@ -74,8 +83,8 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
         CloseHandle(hFile);
 
         if (dwRes == 0) {
-            // Link is broken
-            return 1;
+            // Link is broken or some other error
+            return GetLastError(); // Always a positive error code
         } else if (dwRes >= bufsiz) {
             // Not enough buffer
             return ERR_BUFFER_TOO_SMALL;
@@ -92,6 +101,11 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
             if (path.size() >= bufsiz) {
                 return ERR_BUFFER_TOO_SMALL;
             }
+
+            // DEBUG
+            fprintf(stderr, "SUCCESS getting canonical path of: %s\n", inputPath);
+            fprintf(stderr, "From cwd: %s\n", std::filesystem::current_path().string().c_str());
+            fprintf(stderr, "Canonical path: %s\n", path.c_str());
 
             // Copy from buffer to fullPath
             strcpy(fullPath, path.c_str());
@@ -219,26 +233,6 @@ extern "C" int c_link_target(const char *path, char *buf, size_t bufsiz) {
 }
 
 extern "C" int
-c_copy_link (const char *target, const char *name)
-{
-    DWORD flags = 0;
-
-    // We must explicitly mark as directory if source link is one
-    if (GetFileAttributesA(target) & FILE_ATTRIBUTE_DIRECTORY)
-    {
-        flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
-    }
-
-    // Use the newer version that allows unprivileged users to create symlinks
-    flags |= SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
-
-    BOOLEAN result = CreateSymbolicLinkA(name, target, flags);
-
-    // Return 0 on success, -1 on failure to match Unix symlink() behavior
-    return (result == TRUE) ? 0 : -1;
-}
-
-extern "C" int
 c_delete_link (const char *path)
 {
     // Use RemoveDirectoryA for directory symlinks and DeleteFileA for file
@@ -270,15 +264,15 @@ c_delete_link (const char *path)
 }
 
 extern "C"
-int c_create_link (const char *target, const char *name)
+int c_create_link (const char *target, const char *name, const bool is_dir)
 {
     // Create a soft link
 
     // Use the newer version that allows unprivileged users to create symlinks
     DWORD flags = SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE;
 
-    // Check if the target is a directory
-    if (GetFileAttributesA(target) & FILE_ATTRIBUTE_DIRECTORY)
+    // Check if the target is a directory, if it exists.
+    if (is_dir)
     {
         flags |= SYMBOLIC_LINK_FLAG_DIRECTORY;
     }

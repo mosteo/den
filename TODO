@@ -1,0 +1,5 @@
+- Test Absnormal (add to Kinds tests)
+- Test Pseudocanonical (add to Kinds test)
+- Safer alternative (or via options) to Link where the target is absolute but
+  the created link is relative, to avoid confusion on from where the link is
+  created.

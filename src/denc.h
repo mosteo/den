@@ -15,10 +15,8 @@ extern "C" int c_link_len(const char *path);
 extern "C" int c_link_target(const char *path, char *buf, size_t bufsiz);
 
 // Returns 0 on success, any other for error
-extern "C" int c_copy_link (const char *target, const char *name);
-
-// Returns 0 on success, any other for error
 extern "C" int c_delete_link (const char *path);
 
-// Returns 0 on success, any other for error
-extern "C" int c_create_link (const char *target, const char *name);
+// Returns 0 on success, any other for error.
+// Say if this is for a file or directory symlink (required on Windows).
+extern "C" int c_create_link (const char *target, const char *name, const bool is_dir);
