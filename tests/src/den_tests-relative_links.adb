@@ -69,7 +69,8 @@ begin
       Test_Link   : constant Path := "mylink";
       Test_Target : constant Path := "faketarget";
    begin
-      Link (Test_Link, Test_Target, Options => (Allow_Missing_Target => True));
+      Link (Test_Link, Test_Target,
+            Options => (Allow_Missing_Target => True, others => <>));
       Assert (not Canonizable (Test_Link));
       Assert (Resolve (Test_Link) = "faketarget");
       Unlink (Test_Link);
@@ -81,7 +82,8 @@ begin
       Test_Target : constant Path := Cases / "links" / "a";
    begin
       Create_Directory ("mydir");
-      Link (Test_Link, Test_Target, Options => (Allow_Missing_Target => True));
+      Link (Test_Link, Test_Target,
+            Options => (Allow_Missing_Target => True, others => <>));
       Assert (not Canonizable (Test_Link));
       Assert (Resolve (Test_Link) = "mydir" / Cases / "links" / "a");
       Unlink (Test_Link);

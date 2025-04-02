@@ -117,6 +117,9 @@ package Den.Filesystem is
    type Link_Options is record
       Allow_Missing_Target : Boolean := False;
       --  If the target is missing, a broken link will be created anyway
+
+      Overwrite_Existing   : Boolean := False;
+      --  Remove an existing link (but not other kind of files)
    end record;
 
    procedure Link (From, Target : Path;

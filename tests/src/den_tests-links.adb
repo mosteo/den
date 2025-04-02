@@ -201,7 +201,8 @@ begin
       Link_Path           : constant Path := Test_Dir / "link_to_missing";
       Non_Existent_Target : constant Path := Test_Dir / "non_existent_target";
       Link_Target         : constant Path := Relative (Test_Dir, Non_Existent_Target);
-      Options             : constant Link_Options := (Allow_Missing_Target => True);
+      Options             : constant Link_Options :=
+         (Allow_Missing_Target => True, others => <>);
    begin
       Put_Line ("Test 3: Create a link to a non-existent target with " &
                 "Allow_Missing_Target => True");
@@ -255,7 +256,8 @@ begin
       Link_Path           : constant Path := Test_Dir / "link_to_missing";
       Non_Existent_Target : constant Path := Test_Dir / "non_existent_target";
       Link_Target         : constant Path := Relative (Test_Dir, Non_Existent_Target);
-      Options             : constant Link_Options := (Allow_Missing_Target => False);
+      Options             : constant Link_Options :=
+       (Allow_Missing_Target => False, others => <>);
    begin
       Put_Line ("Test 4: Create a link to a non-existent target with " &
                 "Allow_Missing_Target => False");
@@ -407,7 +409,8 @@ begin
       Link_Path           : constant Path := Test_Dir / "link_to_abs_missing";
       Non_Existent_Target : constant Path := Test_Dir / "abs_non_existent_target";
       Abs_Target          : constant Path := Absolute (Non_Existent_Target);
-      Options             : constant Link_Options := (Allow_Missing_Target => True);
+      Options             : constant Link_Options :=
+         (Allow_Missing_Target => True, others => <>);
    begin
       Put_Line ("Test 7: Create a link with a non-existent absolute target");
 
@@ -451,6 +454,137 @@ begin
          raise Program_Error with "Link is unexpectedly resolvable";
       else
          Put_Line ("SUCCESS: Link is correctly not resolvable");
+      end if;
+   end;
+
+   -- Test 8: Create a link at a path where a softlink already exists with Overwrite_Existing => True
+   Reset_Test_Dir;
+   declare
+      Link_Path    : constant Path := Test_Dir / "existing_link";
+      Target_File1 : constant Path := Test_Dir / "target_file1.txt";
+      Target_File2 : constant Path := Test_Dir / "target_file2.txt";
+      Link_Target1 : constant Path := Relative (Test_Dir, Target_File1);
+      Link_Target2 : constant Path := Relative (Test_Dir, Target_File2);
+      Options      : constant Link_Options :=
+         (Overwrite_Existing => True, others => <>);
+   begin
+      Put_Line ("Test 8: Create a link at a path where a softlink already " &
+                "exists with Overwrite_Existing => True");
+
+      -- Create target files
+      Create_Test_File (Target_File1);
+      Create_Test_File (Target_File2);
+
+      -- Verify that the target files exist
+      if not Exists (Target_File1) or not Exists (Target_File2) then
+         Put_Line ("ERROR: Failed to create target files");
+         raise Program_Error with "Target file creation failed";
+      end if;
+
+      -- Create an initial link to the first target file
+      Link (Link_Path, Link_Target1);
+
+      -- Verify that the initial link exists and points to the first target
+      if not Exists (Link_Path) then
+         Put_Line ("ERROR: Initial link was not created");
+         raise Program_Error with "Initial link creation failed";
+      end if;
+
+      if Target (Link_Path) /= Link_Target1 then
+         Put_Line ("ERROR: Initial link points to " & Target (Link_Path) &
+                   " instead of " & Link_Target1);
+         raise Program_Error with "Initial link points to the wrong target";
+      else
+         Put_Line ("SUCCESS: Initial link points to the correct target");
+      end if;
+
+      -- Now create a new link at the same path with Overwrite_Existing => True
+      Link (Link_Path, Link_Target2, Options);
+
+      -- Verify that the link still exists
+      if not Exists (Link_Path) then
+         Put_Line ("ERROR: Link no longer exists after overwrite attempt");
+         raise Program_Error with "Link was unexpectedly deleted";
+      else
+         Put_Line ("SUCCESS: Link still exists after overwrite");
+      end if;
+
+      -- Verify that the link now points to the second target
+      if Target (Link_Path) /= Link_Target2 then
+         Put_Line ("ERROR: Link still points to " & Target (Link_Path) &
+                   " instead of " & Link_Target2);
+         raise Program_Error with "Link was not properly overwritten";
+      else
+         Put_Line ("SUCCESS: Link now points to the new target");
+      end if;
+
+      -- Verify that the link resolves to the second target file
+      if Resolve (Link_Path) /= Target_File2 then
+         Put_Line ("ERROR: Link resolves to " & Resolve (Link_Path) &
+                   " instead of " & Target_File2);
+         raise Program_Error with "Link does not resolve to the new target";
+      else
+         Put_Line ("SUCCESS: Link resolves to the new target");
+      end if;
+   end;
+
+   -- Test 9: Create a link at a path where a regular file exists with Overwrite_Existing => True
+   Reset_Test_Dir;
+   declare
+      Target_File : constant Path := Test_Dir / "target_file.txt";
+      Existing_File : constant Path := Test_Dir / "existing_file.txt";
+      Link_Target : constant Path := Relative (Test_Dir, Target_File);
+      Options : constant Link_Options :=
+         (Overwrite_Existing => True, others => <>);
+   begin
+      Put_Line ("Test 9: Create a link at a path where a regular file exists " &
+                "with Overwrite_Existing => True");
+
+      -- Create a target file
+      Create_Test_File (Target_File);
+
+      -- Create an existing file at the intended link path
+      Create_Test_File (Existing_File);
+
+      -- Verify that both files exist
+      if not Exists (Target_File) then
+         Put_Line ("ERROR: Failed to create target file");
+         raise Program_Error with "Target file creation failed";
+      end if;
+
+      if not Exists (Existing_File) then
+         Put_Line ("ERROR: Failed to create existing file");
+         raise Program_Error with "Existing file creation failed";
+      end if;
+
+      -- Try to create a link at the path of the existing file with Overwrite_Existing => True
+      -- This should still raise an exception because Overwrite_Existing only works for existing softlinks
+      begin
+         Link (Existing_File, Link_Target, Options);
+         Put_Line ("ERROR: No exception raised when creating link at " &
+                   "a path with a regular file with Overwrite_Existing => True");
+         raise Program_Error with "Link creation did not raise an exception";
+      exception
+         when others =>
+            Put_Line ("SUCCESS: Exception raised when creating link at " &
+                      "a path with a regular file with Overwrite_Existing => True");
+      end;
+
+      -- Verify that the existing file still exists and was not replaced by a link
+      if not Exists (Existing_File) then
+         Put_Line ("ERROR: Existing file was unexpectedly deleted");
+         raise Program_Error with "Existing file was unexpectedly deleted";
+      else
+         Put_Line ("SUCCESS: Existing file still exists");
+      end if;
+
+      -- Verify that the existing file is still a regular file
+      if Kind (Existing_File) /= File then
+         Put_Line ("ERROR: Existing file was unexpectedly changed to a " &
+                   Kind (Existing_File)'Image);
+         raise Program_Error with "Existing file was unexpectedly changed";
+      else
+         Put_Line ("SUCCESS: Existing file is still a regular file");
       end if;
    end;
 

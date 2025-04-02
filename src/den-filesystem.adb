@@ -346,9 +346,16 @@ package body Den.Filesystem is
            & " ...");
 
       if Kind (From) /= Nothing then
-         raise Use_Error with
-           Error ("new link already exists: " & From &
-                  " (kind: " & Kind (From)'Image & ")");
+         if Options.Overwrite_Existing and then Kind (From) = Softlink
+         then
+            Delete_File (From,
+               (Delete_Softlinks => Delete_Link, others => <>));
+         else
+               --  We don't want to overwrite an existing link
+            raise Use_Error with
+               Error ("item at new link path already exists: " & From &
+                        " (kind: " & Kind (From)'Image & ")");
+         end if;
       end if;
 
       if Kind (Abs_Target) = Nothing and then not Options.Allow_Missing_Target
