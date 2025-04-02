@@ -63,9 +63,9 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
                 NULL);
 
         if (hFile == INVALID_HANDLE_VALUE) {
-            fprintf(stderr, "Error getting canonical path of: %s\n", inputPath);
-            fprintf(stderr, "From cwd: %s\n", std::filesystem::current_path().string().c_str());
-            fprintf(stderr, "Error: %lu\n", GetLastError());
+            // fprintf(stderr, "Error getting canonical path of: %s\n", inputPath);
+            // fprintf(stderr, "From cwd: %s\n", std::filesystem::current_path().string().c_str());
+            // fprintf(stderr, "Error: %lu\n", GetLastError());
             return GetLastError(); // Always a positive error code
         }
 
@@ -103,9 +103,9 @@ extern "C" int c_canonical(const char* inputPath, char* fullPath, size_t bufsiz)
             }
 
             // DEBUG
-            fprintf(stderr, "SUCCESS getting canonical path of: %s\n", inputPath);
-            fprintf(stderr, "From cwd: %s\n", std::filesystem::current_path().string().c_str());
-            fprintf(stderr, "Canonical path: %s\n", path.c_str());
+            // fprintf(stderr, "SUCCESS getting canonical path of: %s\n", inputPath);
+            // fprintf(stderr, "From cwd: %s\n", std::filesystem::current_path().string().c_str());
+            // fprintf(stderr, "Canonical path: %s\n", path.c_str());
 
             // Copy from buffer to fullPath
             strcpy(fullPath, path.c_str());
