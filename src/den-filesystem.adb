@@ -10,8 +10,6 @@ with Den.Walk;
 with GNAT.IO;
 with GNAT.OS_Lib;
 
-with Interfaces.C;
-
 --------------------
 -- Den.Filesystem --
 --------------------
@@ -328,7 +326,7 @@ package body Den.Filesystem is
                    Options      : Link_Options := (others => <>))
    is
       function C_Create_Link (Target, Name : C_Strings.Chars_Ptr;
-                              Is_Dir : Interfaces.C.C_bool)
+                              Is_Dir : OS.C_bool)
                               return C_Strings.C.int
         with Import, Convention => C;
       use C_Strings;
@@ -395,13 +393,12 @@ package body Den.Filesystem is
       end if;
 
       declare
-         use Interfaces.C;
          Result : constant Integer :=
                     Integer
                       (C_Create_Link
                          (To_C (Target).To_Ptr,
                           To_C (From).To_Ptr,
-                          C_bool (Kind (Abs_Target) = Directory)));
+                          OS.C_bool (Kind (Abs_Target) = Directory)));
       begin
          if Result /= 0 then
             raise Use_Error with
