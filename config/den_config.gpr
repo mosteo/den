@@ -2,7 +2,7 @@
 with "aaa.gpr";
 with "c_strings.gpr";
 abstract project Den_Config is
-   Crate_Version := "0.1.0-dev";
+   Crate_Version := "0.1.0";
    Crate_Name := "den";
 
    Alire_Host_OS := "linux";

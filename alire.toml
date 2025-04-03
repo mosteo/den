@@ -1,6 +1,6 @@
 name = "den"
 description = "Directory Enumeration Softlink Aware"
-version = "0.1.0-dev"
+version = "0.1.0"
 
 authors = ["Alejandro R. Mosteo"]
 maintainers = ["Alejandro R. Mosteo <alejandro@mosteo.com>"]
@@ -20,6 +20,3 @@ directory = "selftest"
 
 [test]
 runner = "alire"
-
-[[pins]]
-c_strings = { path='deps/cstrings' }
