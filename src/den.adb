@@ -7,8 +7,6 @@ with Den.OS;
 
 with GNAT.IO;
 
-with System;
-
 package body Den is
 
    --  package Dirs renames Ada.Directories;
@@ -229,25 +227,6 @@ package body Den is
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds
    is
-      -----------------
-      -- File_Exists --
-      -----------------
-      --  Original in a-direct.adb. We use this to avoid use of
-      --  non-preelaborable subprograms.
-      function File_Exists (Name : String) return Boolean is
-         function C_File_Exists (A : System.Address) return Integer;
-         pragma Import (C, C_File_Exists, "__gnat_file_exists");
-
-         C_Name : String (1 .. Name'Length + 1);
-
-      begin
-         C_Name (1 .. Name'Length) := Name;
-         C_Name (C_Name'Last) := ASCII.NUL;
-         return C_File_Exists (C_Name'Address) = 1;
-      end File_Exists;
-
-      package OS renames GNAT.OS_Lib;
-
    begin
       return
         (if Resolve_Links then
@@ -259,11 +238,11 @@ package body Den is
                Nothing)
          elsif Is_Softlink (This) then
             Softlink
-         elsif not File_Exists (This) then
+         elsif not OS.File_Exists (This) then
             Nothing
-         elsif OS.Is_Directory (This) then
+         elsif GNAT.OS_Lib.Is_Directory (This) then
             Directory
-         elsif OS.Is_Regular_File (This) then
+         elsif GNAT.OS_Lib.Is_Regular_File (This) then
             File
          else
             Special);

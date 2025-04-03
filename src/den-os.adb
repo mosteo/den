@@ -2,7 +2,29 @@ with Ada.IO_Exceptions; use Ada.IO_Exceptions;
 
 with C_Strings; use C_Strings;
 
+with System;
+
 package body Den.OS is
+
+   ------------------
+   -- C_File_Exists --
+   ------------------
+
+   function C_File_Exists (A : System.Address) return C.int
+      with Import, Convention => C, External_Name => "__gnat_file_exists";
+
+   -----------------
+   -- File_Exists --
+   -----------------
+
+   function File_Exists (Path : String) return Boolean is
+      C_Name : String (1 .. Path'Length + 1);
+      use type C.int;
+   begin
+      C_Name (1 .. Path'Length) := Path;
+      C_Name (C_Name'Last) := ASCII.NUL;
+      return C_File_Exists (C_Name (C_Name'First)'Address) = 1;
+   end File_Exists;
 
    ------------------
    -- C_Canonical --
