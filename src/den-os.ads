@@ -6,6 +6,9 @@ private package Den.OS with Preelaborate is
 
    --  Imports for the common C functions in all supported OSes
 
+   function File_Exists (Path : String) return Boolean;
+   --  Returns True if Path exists in the filesystem
+
    function Canonical (Input_Path : String) return String;
    --  Returns the canonical path for Input_Path
    --  Raises Use_Error if operation fails

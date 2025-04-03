@@ -1,8 +1,6 @@
 with Ada.Directories;
 with Ada.IO_Exceptions; use Ada.IO_Exceptions;
 
-with C_Strings;
-
 with Den.Iterators;
 with Den.OS;
 with Den.Walk;
@@ -325,12 +323,6 @@ package body Den.Filesystem is
    procedure Link (From, Target : Path;
                    Options      : Link_Options := (others => <>))
    is
-      function C_Create_Link (Target, Name : C_Strings.Chars_Ptr;
-                              Is_Dir : OS.C_bool)
-                              return C_Strings.C.int
-        with Import, Convention => C;
-      use C_Strings;
-
       Abs_Target : constant Path :=
         (if Is_Absolute (Target) then
             Target
@@ -392,24 +384,12 @@ package body Den.Filesystem is
            Error ("target does not exist: " & Abs_Target);
       end if;
 
-      declare
-         Result : constant Integer :=
-                    Integer
-                      (C_Create_Link
-                         (To_C (Target).To_Ptr,
-                          To_C (From).To_Ptr,
-                          OS.C_bool (Kind (Abs_Target) = Directory)));
-      begin
-         if Result /= 0 then
-            raise Use_Error with
-              Error ("cannot create softlink "
-                     & From & " --> " & Target & P (Kind (Target)'Image)
-                     & " (error: " & Result'Image & ")");
-         end if;
+      OS.Create_Link (Target => Target,
+                      Name   => From,
+                      Is_Dir => Kind (Abs_Target) = Directory);
 
-         pragma Assert (Kind (From) = Softlink,
-                        "link not created: " & From & P (Kind (From)'Image));
-      end;
+      pragma Assert (Kind (From) = Softlink,
+                     "link not created: " & From & P (Kind (From)'Image));
 
       Log ("linking: " & From & P (Kind (From)'Image)
            & " --> "
@@ -421,10 +401,6 @@ package body Den.Filesystem is
    -----------
 
    procedure Unlink (This : Path) is
-      use C_Strings;
-      function C_Delete_Link (Target : C_Strings.Chars_Ptr)
-                              return C_Strings.C.int
-        with Import, Convention => C;
    begin
       Log ("unlinking: " & This & P (Kind (This)'Image) & " ...");
 
@@ -434,10 +410,7 @@ package body Den.Filesystem is
                   " (kind: " & Kind (This)'Image & ")");
       end if;
 
-      if C_Delete_Link (To_C (This).To_Ptr) not in 0 then
-         raise Use_Error with
-           Error ("failed to unlink: " & This & P (Kind (This)'Image));
-      end if;
+      OS.Delete_Link (This);
 
       Log ("unlinking: " & This & P (Kind (This)'Image) & " OK");
    end Unlink;
