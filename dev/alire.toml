@@ -10,9 +10,6 @@ tags = []
 
 executables = ["dev"]
 
-[test]
-runner = "alire"
-
 [[depends-on]]
 den = "*"
 
