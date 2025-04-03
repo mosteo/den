@@ -1,5 +1,9 @@
 private package Den.OS with Preelaborate is
 
+   type C_bool is new Boolean with
+      Convention => C;
+   --  Not available in old GNATs
+
    --  Imports for the common C functions in all supported OSes
 
    function Canonical (Input_Path : String) return String;

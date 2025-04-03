@@ -8,21 +8,34 @@ env:
 
 jobs:
     test:
-        runs-on: ${{ matrix.os }}
+        runs-on: ${{ matrix.combo.os }}
 
         strategy:
             fail-fast: false
             matrix:
-                os: [ # windows-latest ]
-                  macos-13,
-                  macos-latest,
-                  ubuntu-22.04,
-                  ubuntu-22.04-arm,
-                  ubuntu-24.04,
-                  ubuntu-24.04-arm,
-                  windows-latest
-                ]
-                v : [^14, ""]
+                combo:
+                  - {os: macos-13,         v: ^14}
+                  - {os: macos-13,         v: ""}
+                  - {os: macos-latest,     v: ^14}
+                  - {os: macos-latest,     v: ""}
+                  - {os: ubuntu-22.04,     v: ^10}
+                  - {os: ubuntu-22.04,     v: ^11}
+                  - {os: ubuntu-22.04,     v: ^12}
+                  - {os: ubuntu-22.04,     v: ^13}
+                  - {os: ubuntu-22.04,     v: ^14}
+                  - {os: ubuntu-22.04,     v: ""}
+                  - {os: ubuntu-22.04-arm, v: ^14}
+                  - {os: ubuntu-22.04-arm, v: ""}
+                  - {os: ubuntu-24.04,     v: ^14}
+                  - {os: ubuntu-24.04,     v: ""}
+                  - {os: ubuntu-24.04-arm, v: ^14}
+                  - {os: ubuntu-24.04-arm, v: ""}
+                  - {os: windows-latest,   v: ^10}
+                  - {os: windows-latest,   v: ^11}
+                  - {os: windows-latest,   v: ^12}
+                  - {os: windows-latest,   v: ^13}
+                  - {os: windows-latest,   v: ^14}
+                  - {os: windows-latest,   v: ""}
                 soft: [true, false]
 
         steps:
@@ -50,7 +63,7 @@ jobs:
               uses: alire-project/setup-alire@v5
               with:
                   version: nightly
-                  toolchain: gnat_native${{matrix.v}} gprbuild
+                  toolchain: gnat_native${{matrix.combo.v}} gprbuild
 
             - name: Test
               shell: bash

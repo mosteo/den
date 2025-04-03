@@ -1,6 +1,7 @@
 with Ada.IO_Exceptions; use Ada.IO_Exceptions;
 
 with C_Strings; use C_Strings;
+
 package body Den.OS is
 
    ------------------
@@ -51,7 +52,7 @@ package body Den.OS is
 
    function C_Create_Link (Target,
                            Name   : Chars_Ptr;
-                           Is_Dir : C.C_bool)
+                           Is_Dir : C_bool)
                            return C.int
       with Import, Convention => C;
 
@@ -184,7 +185,7 @@ package body Den.OS is
       Result : constant C.int :=
          C_Create_Link (Target => To_C (Target).To_Ptr,
                         Name   => To_C (Name).To_Ptr,
-                        Is_Dir => C.C_bool (Is_Dir));
+                        Is_Dir => C_bool (Is_Dir));
    begin
       if Result /= 0 then
          raise Use_Error with
