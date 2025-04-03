@@ -5,7 +5,7 @@ pragma Style_Checks (Off);
 package Den_Config is
    pragma Pure;
 
-   Crate_Version : constant String := "0.1.0-dev";
+   Crate_Version : constant String := "0.1.0";
    Crate_Name : constant String := "den";
 
    Alire_Host_OS : constant String := "linux";
