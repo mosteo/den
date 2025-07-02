@@ -472,7 +472,7 @@ package body Den.Filesystem is
                   Unlink (This);
                when Delete_Target =>
                   if Canonizable (This) then
-                      Delete_Target_If_Regular_File (Canonical (This));
+                     Delete_Target_If_Regular_File (Canonical (This));
                   elsif Options.Do_Not_Fail then
                      Log ("skipping unresolvable link target: " & This);
                   else
@@ -482,8 +482,8 @@ package body Den.Filesystem is
                               & This);
                   end if;
                when Delete_Both =>
-                    if Canonizable (This) then
-                      Delete_Target_If_Regular_File (Canonical (This));
+                  if Canonizable (This) then
+                     Delete_Target_If_Regular_File (Canonical (This));
                   elsif not Options.Do_Not_Fail then
                      raise Use_Error with
                        Error ("cannot delete target of unresolvable link: "

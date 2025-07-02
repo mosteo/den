@@ -132,9 +132,9 @@ package Den.Filesystem is
    Pre => (if Options.Relative_Target_From_Absolute_Path
               then Is_Absolute (Target));
    --  From is the link path, Target is the pointed to path. Target should
-   --  either be absolute or relative to From parent, as it is stored as-as as the
-   --  target link. You can use the Relative function to find a relative path
-   --  from From to Target.
+   --  either be absolute or relative to From parent, as it is stored as-is as
+   --  the target link. You can use the Relative function to find a relative
+   --  path from From to Target.
 
    procedure Unlink (This : Path) with
      Pre => Kind (This) = Softlink;
