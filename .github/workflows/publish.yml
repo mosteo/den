@@ -1,0 +1,16 @@
+name: Publish
+
+on:
+    workflow_dispatch:
+
+jobs:
+    publish:
+        runs-on: ubuntu-latest
+
+        steps:
+
+            - uses: mosteo/alr-publish@feat/validate-version
+              with:
+                github_token: ${{ secrets.ALR_PUBLISH_PAT }}
+                index_name: test-index
+                skip_submit: false
