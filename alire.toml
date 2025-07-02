@@ -18,5 +18,6 @@ type      = "test"
 command   = ["alr", "run"]
 directory = "selftest"
 
-[test]
-runner = "alire"
+# Only in 2.1.1 onwards
+# [test]
+# runner = "alire"
