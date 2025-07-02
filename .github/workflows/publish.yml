@@ -12,7 +12,7 @@ jobs:
               uses: actions/checkout@v2
 
             - name: Publish
-              uses: mosteo/alr-publish@feat/validate-version
+              uses: mosteo/alr-publish@devel
               with:
                 github_token: ${{ secrets.ALR_PUBLISH_PAT }}
                 index_name: test-index
