@@ -45,16 +45,6 @@ jobs:
             - name: Check out den
               uses: actions/checkout@v2
 
-            - name: Clean up dev deps
-              shell: bash
-              run: rm -rf deps/*
-
-            - name: Check out cstrings
-              uses: actions/checkout@v2
-              with:
-                repository: mosteo/cstrings
-                path: deps/cstrings
-
             - name: Verify same example
               shell: bash
               run: cmp example/src/example.adb tests/src/example.adb
