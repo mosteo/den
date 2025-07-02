@@ -225,7 +225,8 @@ package Den with Preelaborate is
    is (if Has_Parent (This)
        then Parent (This)
        else ".");
-   --  Always get a parent, even for simple names. This introduces implicit dependency on the current directory.
+   --  Always get a parent, even for simple names. This introduces implicit
+   --  dependency on the current directory.
 
    function Canonical_Parent (This : Path) return Canonical_Path
    is (Parent (Canonical (This)))
