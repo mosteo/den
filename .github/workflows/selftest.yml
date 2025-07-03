@@ -55,6 +55,13 @@ jobs:
                   version: nightly
                   toolchain: gnat_native${{matrix.combo.v}} gprbuild
 
+            # This can be removed once alr 3.0 is available
+            - name: Patch alire.toml for new testsuite
+              shell: bash
+              run: |
+                  echo '[test]' >> alire.toml
+                  echo 'runner = "alire"' >> alire.toml
+
             - name: Test
               shell: bash
               run: |
