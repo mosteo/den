@@ -7,7 +7,6 @@ den = "*"
 
 [[pins]]
 den = { path = ".." }
-c_strings = { path = "../deps/cstrings" }
 
 [build-profiles]
 den       = "validation"

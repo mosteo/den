@@ -55,6 +55,12 @@ jobs:
                   version: nightly
                   toolchain: gnat_native${{matrix.combo.v}} gprbuild
 
+            - name: Enable new testsuite
+              shell: bash
+              run: |
+                cat alire.toml | grep "^\[test\]$" || \
+                  echo -e "[test]\nrunner = 'alire'" >> alire.toml
+
             - name: Test
               shell: bash
               run: |
