@@ -2,7 +2,7 @@
 #ifndef DEN_CONFIG_H
 #define DEN_CONFIG_H
 
-#define CRATE_VERSION "0.1.0"
+#define CRATE_VERSION "0.2.0-dev"
 #define CRATE_NAME "den"
 
 #define ALIRE_HOST_OS "linux"
@@ -15,6 +15,6 @@
 #define BUILD_PROFILE_VALIDATION 2
 #define BUILD_PROFILE_DEVELOPMENT 3
 
-#define BUILD_PROFILE  3
+#define BUILD_PROFILE  2
 
 #endif

@@ -1,6 +1,6 @@
 name = "den"
 description = "Directory Enumeration Softlink Aware"
-version = "0.1.0"
+version = "0.2.0-dev"
 
 authors = ["Alejandro R. Mosteo"]
 maintainers = ["Alejandro R. Mosteo <alejandro@mosteo.com>"]
@@ -20,5 +20,5 @@ command   = ["alr", "run"]
 directory = "example"
 
 # Only in 3.0-dev onwards
-# [test]
-# runner = "alire"
+[test]
+runner = "alire"
