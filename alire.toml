@@ -1,6 +1,6 @@
 name = "den"
 description = "Directory Enumeration Softlink Aware"
-version = "0.2.0"
+version = "0.2.0-dev"
 
 authors = ["Alejandro R. Mosteo"]
 maintainers = ["Alejandro R. Mosteo <alejandro@mosteo.com>"]
