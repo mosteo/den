@@ -7,6 +7,8 @@ with Den.OS;
 
 with GNAT.IO;
 
+with System;
+
 package body Den is
 
    --  package Dirs renames Ada.Directories;
@@ -227,6 +229,25 @@ package body Den is
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds
    is
+      -----------------
+      -- File_Exists --
+      -----------------
+      --  Original in a-direct.adb. We use this to avoid use of
+      --  non-preelaborable subprograms.
+      function File_Exists (Name : String) return Boolean is
+         function C_File_Exists (A : System.Address) return Integer;
+         pragma Import (C, C_File_Exists, "__gnat_file_exists");
+
+         C_Name : String (1 .. Name'Length + 1);
+
+      begin
+         C_Name (1 .. Name'Length) := Name;
+         C_Name (C_Name'Last) := ASCII.NUL;
+         return C_File_Exists (C_Name'Address) = 1;
+      end File_Exists;
+
+      package OS renames GNAT.OS_Lib;
+
    begin
       return
         (if Resolve_Links then
@@ -238,11 +259,11 @@ package body Den is
                Nothing)
          elsif Is_Softlink (This) then
             Softlink
-         elsif not OS.File_Exists (This) then
+         elsif not File_Exists (This) then
             Nothing
-         elsif GNAT.OS_Lib.Is_Directory (This) then
+         elsif OS.Is_Directory (This) then
             Directory
-         elsif GNAT.OS_Lib.Is_Regular_File (This) then
+         elsif OS.Is_Regular_File (This) then
             File
          else
             Special);
@@ -448,12 +469,12 @@ package body Den is
       subtype LC_Drive is Character range 'a' .. 'z';
       subtype UC_Drive is Character range 'A' .. 'Z';
 
-      Bad_Sep : constant Character :=
-                  (case Dir_Separator is
-                      when '/' => '\',
-                      when '\' => '/',
-                      when others =>
-                        raise Program_Error with "Unsupported platform");
+      --  Bad_Sep : constant Character :=
+      --              (case Dir_Separator is
+      --                  when '/' => '\',
+      --                  when '\' => '/',
+      --                  when others =>
+      --                    raise Program_Error with "Unsupported platform");
    begin
       --  Empty string
       if This = "" then
@@ -461,9 +482,10 @@ package body Den is
       end if;
 
       --  Mixed separators
-      if (for some Char of This => Char = Bad_Sep) then
-         return AAA.Strings.Replace (This, "" & Bad_Sep, "" & Dir_Separator);
-      end if;
+      --  if (for some Char of This => Char = Bad_Sep) then
+      --     return
+      --       Scrub (AAA.Strings.Replace (This, "" & Bad_Sep, "" & Dir_Separator));
+      --  end if;
 
       --  Duplicated separators
       for I in This'Range loop

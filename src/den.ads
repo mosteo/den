@@ -71,9 +71,11 @@ package Den with Preelaborate is
    is (for all P of This => P in Path);
 
    function Scrub (This : String) return Path;
-   --  Fix obvious problems like trailing '/', duplicated "//", '\' instead of
-   --  '/' (and viceversa). May raise Bad_Path if no good path remains after
-   --  scrubbing. Will respect initial '\\' on Windows.
+   --  Fix trailing '/' and duplicated "//". May raise Bad_Path if no good path
+   --  remains after scrubbing. Will respect initial '\\' on Windows.
+   --
+   --  DOES NOT fix reversed slashes. This means that using non-platform
+   --  separators will be interpreted as any other character.
 
    function Can_Scrub (This : String) return Boolean;
    --  Says if Scrub would not raise Bad_Path;
