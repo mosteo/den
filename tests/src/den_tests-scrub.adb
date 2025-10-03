@@ -12,7 +12,7 @@ procedure Den_Tests.Scrub is
 
 begin
    Assert ("a" = Den.Scrub ("a")); -- identity
-   Assert ("a" = Den.Scrub ("a/")); -- trailing removal
+   Assert ("a" = Den.Scrub ("a" & Dir_Separator)); -- trailing removal
 
    --  Duped separator simplification
    Assert ("a" / "b" = Den.Scrub ("a" & Dir_Separator & Dir_Separator & "b"));
