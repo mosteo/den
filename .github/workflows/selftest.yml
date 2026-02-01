@@ -15,26 +15,39 @@ jobs:
             matrix:
                 combo:
                   - {os: macos-15-intel,   v: ^14}
+                  - {os: macos-15-intel,   v: ^15}
                   - {os: macos-15-intel,   v: ""}
+
                   - {os: macos-latest,     v: ^14}
+                  - {os: macos-latest,     v: ^15}
                   - {os: macos-latest,     v: ""}
+
                   - {os: ubuntu-22.04,     v: ^10}
                   - {os: ubuntu-22.04,     v: ^11}
                   - {os: ubuntu-22.04,     v: ^12}
                   - {os: ubuntu-22.04,     v: ^13}
                   - {os: ubuntu-22.04,     v: ^14}
+                  - {os: ubuntu-22.04,     v: ^15}
                   - {os: ubuntu-22.04,     v: ""}
+
                   - {os: ubuntu-22.04-arm, v: ^14}
+                  - {os: ubuntu-22.04-arm, v: ^15}
                   - {os: ubuntu-22.04-arm, v: ""}
+
                   - {os: ubuntu-24.04,     v: ^14}
+                  - {os: ubuntu-24.04,     v: ^15}
                   - {os: ubuntu-24.04,     v: ""}
+
                   - {os: ubuntu-24.04-arm, v: ^14}
+                  - {os: ubuntu-24.04-arm, v: ^15}
                   - {os: ubuntu-24.04-arm, v: ""}
+
                   - {os: windows-latest,   v: ^10}
                   - {os: windows-latest,   v: ^11}
                   - {os: windows-latest,   v: ^12}
                   - {os: windows-latest,   v: ^13}
                   - {os: windows-latest,   v: ^14}
+                  - {os: windows-latest,   v: ^15}
                   - {os: windows-latest,   v: ""}
                 soft: [true, false]
 
