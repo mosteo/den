@@ -1,7 +1,12 @@
 name: Tests
 
 on:
-    pull_request
+    pull_request:
+    push:
+      branches:
+        - main
+      tags:
+        - 'v*.*.*'
 
 env:
   DEN_DEBUG: true
@@ -67,6 +72,11 @@ jobs:
               with:
                   version: nightly
                   toolchain: gnat_native${{matrix.combo.v}} gprbuild
+
+            - name: Build in validation mode
+              shell: bash
+              run: |
+                  alr build --validation
 
             - name: Enable new testsuite
               shell: bash
