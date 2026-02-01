@@ -14,8 +14,8 @@ jobs:
             fail-fast: false
             matrix:
                 combo:
-                  - {os: macos-13,         v: ^14}
-                  - {os: macos-13,         v: ""}
+                  - {os: macos-15-intel,   v: ^14}
+                  - {os: macos-15-intel,   v: ""}
                   - {os: macos-latest,     v: ^14}
                   - {os: macos-latest,     v: ""}
                   - {os: ubuntu-22.04,     v: ^10}
