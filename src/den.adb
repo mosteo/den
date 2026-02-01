@@ -484,7 +484,8 @@ package body Den is
       --  Mixed separators
       --  if (for some Char of This => Char = Bad_Sep) then
       --     return
-      --       Scrub (AAA.Strings.Replace (This, "" & Bad_Sep, "" & Dir_Separator));
+      --       Scrub (AAA.Strings.Replace
+      --               (This, "" & Bad_Sep, "" & Dir_Separator));
       --  end if;
 
       --  Duplicated separators
