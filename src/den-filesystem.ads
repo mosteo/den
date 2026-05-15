@@ -114,6 +114,14 @@ package Den.Filesystem is
    procedure Delete_Tree (This : Path);
    --  Recursive deletion
 
+   function Delete_Empty_Tree (This : Path) return Boolean;
+   --  Delete a full tree only if is already empty (nothing but empty folders).
+   --  Otherwise it deletes nothing. Returns True if something was deleted.
+
+   procedure Prune_Tree (This : Path; Delete_Root : Boolean := True);
+   --  Delete empty folders at any depth within This, if it is a folder. Delete
+   --  This itself if everything was empty.
+
    type Link_Options is record
       Allow_Missing_Target : Boolean := False;
       --  If the target is missing, a broken link will be created anyway

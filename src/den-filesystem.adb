@@ -514,6 +514,72 @@ package body Den.Filesystem is
                                Recursive    => True));
    end Delete_Tree;
 
+   -----------------------
+   -- Delete_Empty_Tree --
+   -----------------------
+
+   function Delete_Empty_Tree (This : Path) return Boolean is
+      Has_Non_Dir : Boolean := False;
+
+      procedure Check (Item  : Walk.Item;
+                       Enter : in out Boolean;
+                       Stop  : in out Boolean) is
+         pragma Unreferenced (Enter);
+      begin
+         --  Any non-directory item means the tree is not purely empty folders;
+         --  no need to keep walking.
+         if Kind (Item.Path) /= Directory then
+            Has_Non_Dir := True;
+            Stop        := True;
+         end if;
+      end Check;
+   begin
+      if Kind (This) /= Directory then
+         return False;
+      end if;
+
+      Walk.Find (This, Check'Access);
+      --  If This is already empty, Check is never called and Has_Non_Dir
+      --  stays False, which is the correct outcome.
+
+      if Has_Non_Dir then
+         return False;
+      end if;
+
+      Delete_Tree (This);
+      return True;
+   end Delete_Empty_Tree;
+
+   ----------------
+   -- Prune_Tree --
+   ----------------
+
+   procedure Prune_Tree (This : Path; Delete_Root : Boolean := True) is
+      All_Dirs : constant Walk.Items :=
+        Walk.Find (This, Filter => Walk.Kind_Is (Directory));
+      --  Collect all subdirectories up front. This does not include This
+      --  itself, so it is handled separately via Delete_Root.
+   begin
+      if Kind (This) /= Directory then
+         return;
+      end if;
+
+      --  Items are sorted by path, so reverse order is deepest-first: a child
+      --  path is always lexicographically greater than its parent, meaning we
+      --  always visit a directory before its parent, making it safe to delete.
+      for Dir of reverse All_Dirs loop
+         --  Re-check live: a previously non-empty dir may now be empty because
+         --  we just deleted its children.
+         if Walk.Ls (Dir.Path).Is_Empty then
+            Delete_Directory (Dir.Path);
+         end if;
+      end loop;
+
+      if Delete_Root and then Walk.Ls (This).Is_Empty then
+         Delete_Directory (This);
+      end if;
+   end Prune_Tree;
+
    ---------------------
    -- Pseudocanonical --
    ---------------------
