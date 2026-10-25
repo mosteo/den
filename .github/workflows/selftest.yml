@@ -23,9 +23,12 @@ jobs:
                   - {os: macos-15-intel,   v: ^15}
                   - {os: macos-15-intel,   v: ""}
 
-                  - {os: macos-latest,     v: ^14}
-                  - {os: macos-latest,     v: ^15}
-                  - {os: macos-latest,     v: ""}
+                  # Not macos-latest (macos-26): since runner image 20261013,
+                  # its SDK's libSystem.tbd lists arm64e.x1, which the GNAT
+                  # linker rejects. Update when GNAT is fixed.
+                  - {os: macos-15,         v: ^14}
+                  - {os: macos-15,         v: ^15}
+                  - {os: macos-15,         v: ""}
 
                   - {os: ubuntu-22.04,     v: ^10}
                   - {os: ubuntu-22.04,     v: ^11}
