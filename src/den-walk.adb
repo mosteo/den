@@ -45,16 +45,18 @@ package body Den.Walk is
       ----------
 
       procedure Find (Parent : Dir_Path; Depth : Positive) is
+         Dir  : constant Path := Parent (Parent'First .. Parent'Last - 1);
          Base : constant Dir_Path :=
                   (if Options.Canonicalize /= None
-                   then Pseudocanonical
-                     (Parent (Parent'First .. Parent'Last - 1))
-                   & OS.Directory_Separator
+                   then Pseudocanonical (Dir) & OS.Directory_Separator
                    else Parent);
+         Listed : constant Path :=
+                    (if Kind (Dir) = Softlink then Canonical (Dir) else Dir);
+         --  Ls of a softlink gives the link itself, so list its target when
+         --  entering a softlinked dir (the start of the walk, or any one with
+         --  Enter_Softlinked_Dirs). Children are still reported below Base.
       begin
-         for Item of Ls (Parent (Parent'First .. Parent'Last - 1),
-                         (Canonicalize => False))
-         loop
+         for Item of Ls (Listed, (Canonicalize => False)) loop
             if Stop then
                return;
             end if;
