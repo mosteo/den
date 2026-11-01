@@ -1,3 +1,7 @@
+pragma Ignore_Pragma (Alire_Test);
+pragma Alire_Test;
+--  Declared here too because this main is shared with the example crate.
+
 with Den.Filesystem;
 with Den.Walk;
 

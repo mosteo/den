@@ -1,3 +1,5 @@
+pragma Alire_Test;
+
 with Ada.Text_IO;
 
 with Den.Filesystem;

@@ -1,3 +1,5 @@
+pragma Alire_Test;
+
 pragma Warnings (Off);
 
 with Ada.Assertions;

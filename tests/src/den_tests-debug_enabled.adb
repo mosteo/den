@@ -1,3 +1,5 @@
+pragma Alire_Test;
+
 with Ada.Environment_Variables;
 with Ada.Text_IO;
 
