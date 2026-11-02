@@ -435,25 +435,32 @@ begin
 
    --  COPY
 
-   if Kind ("cases") = Directory then
-      Delete_Tree ("cases");
-   end if;
-   Mkdir ("cases");
-   Copy (Cases, "cases");
-   for Item of Walk.Find ("cases") loop
-      declare
-         Src : constant Path := Item.Path;
-         Dst : constant Path := ".." / Item.Path;
-      begin
-         pragma Assert
-           (Kind (Src) = Kind (Dst),
-            "item mismatch: " & Src
-            & " (" & Kind (Src)'Image & ") /= "
-            & Dst
-            & " (" & Kind (Dst)'Image & ")");
-      end;
-   end loop;
-   Delete_Tree ("cases");
+   declare
+      Copied : constant Path := "selftest_cases";
+      --  Not "cases", as tests run in parallel, and links with one ".." too
+      --  many in other tests must keep being broken.
+   begin
+      if Kind (Copied) = Directory then
+         Delete_Tree (Copied);
+      end if;
+      Mkdir (Copied);
+      Copy (Cases, Copied);
+      for Item of Walk.Find (Copied) loop
+         declare
+            Src : constant Path := Item.Path;
+            Dst : constant Path :=
+                    Cases / Src (Src'First + Copied'Length + 1 .. Src'Last);
+         begin
+            pragma Assert
+              (Kind (Src) = Kind (Dst),
+               "item mismatch: " & Src
+               & " (" & Kind (Src)'Image & ") /= "
+               & Dst
+               & " (" & Kind (Dst)'Image & ")");
+         end;
+      end loop;
+      Delete_Tree (Copied);
+   end;
    Put_Line ("OK copy");
 
    pragma Assert (not Timed_Out, "Timed out");

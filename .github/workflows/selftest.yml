@@ -27,9 +27,9 @@ jobs:
                   - {os: macos-15,         v: ^15}
                   - {os: macos-15,         v: ""}
 
-                  # Latest GNAT only: images with the 27 SDK list arm64e.x1 in
-                  # libSystem.tbd, which the linker in GNAT up to 16.1 rejects.
-                  # Fixed in 16.2.0-pre0, which "" selects on macOS.
+                  # Latest GNAT only. Some images of these runners default to
+                  # the 27 SDK, whose libSystem.tbd lists arm64e.x1, which GNAT
+                  # linkers reject. See the step below.
                   - {os: macos-26-intel,   v: ""}
                   - {os: macos-26,         v: ""}
 
@@ -73,6 +73,15 @@ jobs:
         steps:
             - name: Enable/disable softlinks support in git
               run: git config --global core.symlinks ${{ matrix.soft }}
+
+            - name: Use the 26 SDK if available, as GNAT can't link with the 27
+              if: startsWith(matrix.combo.os, 'macos-26')
+              shell: bash
+              run: |
+                  sdks=/Library/Developer/CommandLineTools/SDKs
+                  if [ -d "$sdks/MacOSX26.sdk" ]; then
+                      sudo ln -sfn MacOSX26.sdk "$sdks/MacOSX.sdk"
+                  fi
 
             - name: Check out den
               uses: actions/checkout@v2
