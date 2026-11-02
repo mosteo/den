@@ -52,6 +52,10 @@ package body Den.Du is
                   Children      : Tree;
                   Children_Size : Sizes := 0;
                begin
+                  if Kind (Child) = Nothing then
+                     OS.Check_Not_Too_Long (Child);
+                  end if;
+
                   if Kind (Child) = Directory then
                      Children := List_Internal (Child);
                      for Child of Children loop

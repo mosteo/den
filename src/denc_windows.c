@@ -507,6 +507,22 @@ int c_kind (const char *path)
     return result;
 }
 
+int c_is_too_long (const char *path)
+{
+    int    error = 0;
+    WCHAR *wide  = to_wide (path, &error);
+    int    result;
+
+    if (wide == NULL)
+        return 0;
+
+    result = GetFileAttributesW (wide) == INVALID_FILE_ATTRIBUTES
+        && GetLastError () == ERROR_FILENAME_EXCED_RANGE;
+
+    free (wide);
+    return result;
+}
+
 long long c_file_size (const char *path)
 {
     int    error = 0;

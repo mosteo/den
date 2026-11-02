@@ -1,0 +1,399 @@
+pragma Alire_Test;
+
+with Ada.Directories;
+with Ada.IO_Exceptions;
+with Ada.Text_IO;
+
+with Den.Du;
+with Den.Filesystem;
+with Den.Walk;
+
+procedure Den_Tests.Walk_Options is
+
+   use Den;
+   use Den.Filesystem;
+   use Den.Operators;
+
+   use type Walk.Canonical_Parts;
+
+   Test_Dir : constant Path := "walk_options_test_dir";
+
+   Sub  : constant Path := Test_Dir / "sub";
+   Deep : constant Path := Sub / "deep";
+
+   Supported : constant Boolean := Kind ("canary") = Softlink;
+
+   -----------
+   -- Touch --
+   -----------
+
+   procedure Touch (File_Path : Path) is
+      F : Ada.Text_IO.File_Type;
+   begin
+      Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, File_Path);
+      Ada.Text_IO.Close (F);
+   end Touch;
+
+   ---------
+   -- Has --
+   ---------
+
+   function Has (Found : Walk.Items; This : Path) return Boolean
+   is (for some Item of Found => Item.Path = This);
+
+   ------------------------
+   -- Except_Root_Filter --
+   ------------------------
+
+   --  Matches anything but the start of the walk
+
+   type Except_Root_Filter (Length : Natural) is new Walk.Filters with record
+      Root : String (1 .. Length);
+   end record;
+
+   overriding function Match (This : Except_Root_Filter;
+                              Item : Path)
+                              return Boolean
+   is (Item /= This.Root);
+
+   ------------------
+   -- Check_Filter --
+   ------------------
+
+   --  A filter says what is reported, not what is entered
+
+   procedure Check_Filter is
+      Found : constant Walk.Items :=
+                Walk.Find (Test_Dir, Filter => Walk.Kind_Is (File));
+   begin
+      Assert (Has (Found, Test_Dir / "file"));
+      Assert (Has (Found, Sub / "file"));
+      Assert (Has (Found, Deep / "file"));
+      Assert (not Has (Found, Sub));
+   end Check_Filter;
+
+   ----------------
+   -- Check_Root --
+   ----------------
+
+   procedure Check_Root is
+   begin
+      --  Nothing is reported for a start that doesn't exist
+
+      Assert (Walk.Find (Test_Dir / "missing").Is_Empty);
+
+      --  A start that is not a directory is only reported, never entered
+
+      Assert (Natural (Walk.Find (Test_Dir / "file").Length) = 1);
+      Assert (Walk.Find (Test_Dir / "file").First_Element.Depth = 0);
+      Assert
+        (Walk.Find
+           (Test_Dir / "file",
+            Filter => Except_Root_Filter'
+                        (Length => Natural'(Test_Dir'Length + 5),
+                         Root   => Test_Dir / "file")).Is_Empty);
+   end Check_Root;
+
+   ---------------------
+   -- Check_From_Root --
+   ---------------------
+
+   --  The separator of a root must not be duplicated
+
+   procedure Check_From_Root is
+      Top   : constant Path := Root (Absnormal ("."));
+      Found : Boolean := False;
+
+      procedure Check (This  : Walk.Item;
+                       Enter : in out Boolean;
+                       Stop  : in out Boolean)
+      is
+         pragma Unreferenced (Enter);
+      begin
+         Assert (This.Path = Top / Name (This.Path),
+                 "Unexpected path: " & This.Path);
+         Found := True;
+         Stop  := True;
+      end Check;
+   begin
+      Walk.Find (Top, Check'Access);
+      Assert (Found);
+   end Check_From_Root;
+
+   -----------------
+   -- Check_Enter --
+   -----------------
+
+   procedure Check_Enter is
+      Found : constant Walk.Items :=
+                Walk.Find (Test_Dir,
+                           (Enter_Regular_Dirs    => False,
+                            Enter_Softlinked_Dirs => True,
+                            others                => <>));
+   begin
+      Assert (Has (Found, Test_Dir / "link_dir" / "file"));
+      Assert (Has (Found, Sub));
+      Assert (not Has (Found, Sub / "file"));
+   end Check_Enter;
+
+   -----------------
+   -- Check_Visit --
+   -----------------
+
+   procedure Check_Visit is
+      Plain   : constant Walk.Items :=
+                  Walk.Find (Test_Dir, (Visit_Softlinks => False,
+                                        others          => <>));
+      Entered : constant Walk.Items :=
+                  Walk.Find (Test_Dir, (Visit_Softlinks       => False,
+                                        Enter_Softlinked_Dirs => True,
+                                        others                => <>));
+   begin
+      Assert (Has (Plain, Sub));
+      Assert (not Has (Plain, Test_Dir / "link_dir"));
+      Assert (not Has (Plain, Test_Dir / "link_file"));
+      Assert (not Has (Plain, Test_Dir / "broken"));
+
+      --  Not reporting a link doesn't stop it from being entered
+
+      Assert (not Has (Entered, Test_Dir / "link_dir"));
+      Assert (Has (Entered, Test_Dir / "link_dir" / "file"));
+
+      --  Also for the start of the walk
+
+      Assert (Walk.Find (Test_Dir / "broken",
+                         (Visit_Softlinks => False,
+                          others          => <>)).Is_Empty);
+      Assert (not Walk.Find (Test_Dir / "broken").Is_Empty);
+   end Check_Visit;
+
+   -------------------
+   -- Assert_Unique --
+   -------------------
+
+   procedure Assert_Unique (Found : Walk.Items) is
+      Seen : Sorted_Paths;
+   begin
+      for Item of Found loop
+         Assert (not Seen.Contains (Item.Path), "Duplicated: " & Item.Path);
+         Seen.Insert (Item.Path);
+      end loop;
+   end Assert_Unique;
+
+   ------------------
+   -- Check_Dedupe --
+   ------------------
+
+   procedure Check_Dedupe is
+      Unique  : constant Walk.Items :=
+                  Walk.Find (Test_Dir, (Canonicalize => Walk.All_Deduped,
+                                        others       => <>));
+      Entered : constant Walk.Items :=
+                  Walk.Find (Test_Dir, (Canonicalize          => Walk.All_Deduped,
+                                        Enter_Softlinked_Dirs => True,
+                                        others                => <>));
+      Real    : constant Path := Canonical (Test_Dir);
+   begin
+      --  The link is seen first, but that must not hide what's in its target
+
+      Assert (Has (Unique, Real / "sub" / "file"));
+      Assert (Has (Unique, Real / "sub" / "deep" / "file"));
+
+      --  Everything just once
+
+      Assert_Unique (Unique);
+      Assert_Unique (Entered);
+
+      Assert (Has (Entered, Real / "sub" / "file"));
+   end Check_Dedupe;
+
+   -----------------
+   -- Check_Loops --
+   -----------------
+
+   --  A link back into a folder being walked is reported, but not entered
+
+   procedure Check_Loops is
+      Back : constant Path := Sub / "back";
+   begin
+      Link (Back, "..");
+
+      for Mode in Walk.Canonical_Parts loop
+         declare
+            Found : constant Walk.Items :=
+                      Walk.Find (Test_Dir, (Enter_Softlinked_Dirs => True,
+                                            Canonicalize          => Mode,
+                                            others                => <>));
+         begin
+            if Mode in Walk.None | Walk.Base then
+               Assert (not Has (Found, Back / "file"));
+            end if;
+            if Mode = Walk.None then
+               Assert (Has (Found, Back));
+               Assert (Has (Found, Test_Dir / "link_dir" / "file"));
+            end if;
+         end;
+      end loop;
+
+      Unlink (Back);
+   end Check_Loops;
+
+   --------------
+   -- Check_Ls --
+   --------------
+
+   procedure Check_Ls is
+      The_File : constant Path := Test_Dir / "file";
+   begin
+      Assert (Walk.Ls (The_File).Contains (The_File));
+      Assert (Walk.Ls (The_File, (Canonicalize => True))
+              .Contains (Canonical (The_File)));
+   end Check_Ls;
+
+   --------------------
+   -- Check_Too_Long --
+   --------------------
+
+   --  On Unix, a tree can go deeper than the longest path that the OS accepts
+   --  by descending into it. That must not look like the end of the tree.
+
+   Long_Name : constant String (1 .. 200) := (others => 'd');
+
+   procedure Check_Too_Long is
+      Top  : constant Path := "walk_options_too_long";
+      Dest : constant Path := "woc"; -- Shorter, so the source fails first
+
+      package Du is new Den.Du;
+
+      --  A path past the limit, even though it's not known to exist
+      function Long_Path (Levels : Positive) return Path
+      is (if Levels = 1
+          then Top / Long_Name
+          else Long_Path (Levels - 1) / Long_Name);
+
+      procedure Remove (Name : Path) is
+      begin
+         if Kind (Name) = Directory then
+            Ada.Directories.Set_Directory (Name);
+            Remove (Long_Name);
+            Ada.Directories.Set_Directory ("..");
+            Delete_Directory (Name);
+         end if;
+      end Remove;
+
+      procedure Grow (Levels : Natural) is
+      begin
+         if Levels > 0 then
+            Create_Directory (Long_Name);
+            Ada.Directories.Set_Directory (Long_Name);
+            Grow (Levels - 1);
+            Ada.Directories.Set_Directory ("..");
+         end if;
+      end Grow;
+
+      ------------
+      -- Raises --
+      ------------
+
+      --  Says if the operation raises Use_Error instead of carrying on silently
+
+      function Raises (Operation : access procedure) return Boolean is
+      begin
+         Operation.all;
+         return False;
+      exception
+         when Ada.IO_Exceptions.Use_Error =>
+            return True;
+      end Raises;
+
+      procedure Do_Find is
+      begin
+         Assert (not Walk.Find (Top).Is_Empty);
+      end Do_Find;
+
+      procedure Do_Find_Start is
+      begin
+         Assert (Walk.Find (Long_Path (30)).Is_Empty);
+      end Do_Find_Start;
+
+      procedure Do_Ls is
+      begin
+         Assert (Walk.Ls (Long_Path (30)).Is_Empty);
+      end Do_Ls;
+
+      procedure Do_Du is
+      begin
+         Assert (Natural (Du.List (Top).Length) = 1);
+      end Do_Du;
+
+      procedure Do_Copy is
+      begin
+         Copy (Top, Dest);
+      end Do_Copy;
+
+      Raised_Find, Raised_Start, Raised_Ls, Raised_Du, Raised_Copy : Boolean;
+   begin
+      if Dir_Separator /= '/' then
+         return;
+      end if;
+
+      Remove (Top);
+      Remove (Dest);
+
+      Create_Directory (Top);
+      Ada.Directories.Set_Directory (Top);
+      Grow (30);
+      Ada.Directories.Set_Directory ("..");
+
+      Raised_Find  := Raises (Do_Find'Access);
+      Raised_Start := Raises (Do_Find_Start'Access);
+      Raised_Ls    := Raises (Do_Ls'Access);
+      Raised_Du    := Raises (Do_Du'Access);
+
+      Create_Directory (Dest);
+      Raised_Copy  := Raises (Do_Copy'Access);
+
+      Remove (Top);
+      Remove (Dest);
+
+      Assert (Raised_Find, "Find stopped silently at the limit of the OS");
+      Assert (Raised_Start, "Find took a long start as missing");
+      Assert (Raised_Ls, "Ls took a long path as missing");
+      Assert (Raised_Du, "Du stopped silently at the limit of the OS");
+      Assert (Raised_Copy, "Copy failed unclearly at the limit of the OS");
+   end Check_Too_Long;
+
+begin
+   if Exists (Test_Dir) then
+      Delete_Tree (Test_Dir);
+   end if;
+
+   Create_Directory (Deep, (Create_Intermediate => True, others => <>));
+   Touch (Test_Dir / "file");
+   Touch (Sub / "file");
+   Touch (Deep / "file");
+
+   Check_Filter;
+   Check_Root;
+   Check_From_Root;
+   Check_Ls;
+   Check_Too_Long;
+
+   if Supported then
+      --  These sort before what they point to
+
+      Link (Test_Dir / "broken", "missing",
+            Options => (Allow_Missing_Target => True, others => <>));
+      Link (Test_Dir / "link_dir", "sub");
+      Link (Test_Dir / "link_file", "file");
+
+      Check_Enter;
+      Check_Visit;
+      Check_Dedupe;
+      Check_Loops;
+   else
+      Ada.Text_IO.Put_Line ("Skipping link tests as they are not supported");
+   end if;
+
+   Delete_Tree (Test_Dir);
+end Den_Tests.Walk_Options;

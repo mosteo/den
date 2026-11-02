@@ -8,6 +8,11 @@ private package Den.OS with Preelaborate is
    function Kind_Of (Path : String) return Kinds;
    --  Says what is at Path, without following it if it is a softlink
 
+   procedure Check_Not_Too_Long (Path : String);
+   --  Raises Use_Error if the OS rejects Path for being too long. Kind_Of gives
+   --  Nothing for those, which must not be taken as if nothing was there by
+   --  whatever is walking a tree.
+
    function Canonical (Input_Path : String) return String;
    --  Returns the canonical path for Input_Path
    --  Raises Use_Error if operation fails

@@ -113,6 +113,7 @@ package body Den.Filesystem is
          for Item of Iterators.Iterate (Src) loop
             case Kind (Src / Item) is
                when Nothing =>
+                  OS.Check_Not_Too_Long (Src / Item);
                   raise Program_Error with Error ("item missing?: "
                                                   & (Src / Item));
                when Directory =>

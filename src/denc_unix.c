@@ -61,6 +61,13 @@ int c_kind (const char *path)
         : DEN_SPECIAL;
 }
 
+int c_is_too_long (const char *path)
+{
+    struct stat sb;
+
+    return lstat (path, &sb) == -1 && errno == ENAMETOOLONG;
+}
+
 long long c_file_size (const char *path)
 {
     struct stat sb;

@@ -17,7 +17,9 @@ package Den.Walk is
           when Softlink | File | Special => Ls'Result.Length in 1,
           when others                    => True);
    --  Return immediate children of a directory. Won't include "." or "..".
-   --  Won't prepend Path (unless Canonicalize)
+   --  Won't prepend Path (unless Canonicalize, which raises Bad_Path for links
+   --  that cannot be resolved). Raises Use_Error if This cannot be read or is
+   --  too long for the OS.
 
    function Dir (This    : Path;
                  Options : Ls_Options := (others => <>))
@@ -27,7 +29,8 @@ package Den.Walk is
    type Filters is interface;
 
    function Match (This : Filters; Item : Path) return Boolean is abstract;
-   --  Paths matched will be visited
+   --  Paths matched will be visited. This doesn't affect what is entered, so
+   --  anything can be found below a directory that doesn't match.
 
    type No_Filter is new Filters with null record;
 
@@ -66,13 +69,14 @@ package Den.Walk is
    type Find_Options is record
       Enter_Regular_Dirs    : Boolean := True;
       Enter_Softlinked_Dirs : Boolean := False;
-      --  Beware that loops may occur and the user should break them
+      --  A directory that is being walked is not entered again through a link
+      --  that loops back to it, although that link is still visited.
       Visit_Softlinks       : Boolean := True;
-      --  Whether Action will be called on softlinks
+      --  Whether Action will be called on softlinks. They may still be entered
       Canonicalize          : Canonical_Parts := None;
-      --  Note that Complete_Deduped requires storing all found canonical paths
-      --  to avoid revisiting them through several converging softlinks, so it
-      --  may take O(n) memory on the number of paths.
+      --  Note that All_Deduped requires storing all found canonical paths to
+      --  avoid revisiting them through several converging softlinks, so it may
+      --  take O(n) memory on the number of paths.
    end record;
 
    procedure Find
@@ -87,7 +91,8 @@ package Den.Walk is
    --  exists. If given a Filter, Action will be only called for those matching
    --  it. The order of visiting is alphabetical. "." and ".." are never
    --  visited. Complexity is O(n log n) due to the sorting of entries in
-   --  a directory.
+   --  a directory. Raises Use_Error if a directory cannot be read, or on
+   --  reaching a path that is too long for the OS.
 
    package Item_Sets is new Ada.Containers.Indefinite_Ordered_Multisets (Item);
    --  Multiset as to preserve the semantics of All_With_Dupes
@@ -100,7 +105,6 @@ package Den.Walk is
       Filter  : Filters'Class := No_Filter'(null record))
       return Items;
    --  As the procedure version, but returns the paths that would be visited.
-   --  May take a long time without feedback, and softlink dir loops will cause
-   --  infinite recursion.
+   --  May take a long time without feedback.
 
 end Den.Walk;

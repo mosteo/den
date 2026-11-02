@@ -25,6 +25,9 @@ int c_full_path (const char *inputPath, char *fullPath, size_t bufsiz);
 enum { DEN_NOTHING, DEN_DIRECTORY, DEN_FILE, DEN_SOFTLINK, DEN_SPECIAL };
 int c_kind (const char *path);
 
+// True (nonzero) if the OS rejects path for being too long
+int c_is_too_long (const char *path);
+
 // Returns the size of the file at path, or a negated error code
 long long c_file_size (const char *path);
 

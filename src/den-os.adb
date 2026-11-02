@@ -24,6 +24,10 @@ package body Den.OS is
                     return C.int
       with Import, Convention => C;
 
+   function C_Is_Too_Long (Path : Chars_Ptr)
+                           return C.int
+      with Import, Convention => C;
+
    function C_File_Size (Path : Chars_Ptr)
                          return Long_Long_Integer
       with Import, Convention => C;
@@ -164,6 +168,18 @@ package body Den.OS is
    is (if Has_NUL (Path)
        then Nothing
        else Kinds'Val (C_Kind (To_C (Path).To_Ptr)));
+
+   ------------------------
+   -- Check_Not_Too_Long --
+   ------------------------
+
+   procedure Check_Not_Too_Long (Path : String) is
+   begin
+      if not Has_NUL (Path) and then C_Is_Too_Long (To_C (Path).To_Ptr) /= 0
+      then
+         raise Use_Error with "Path too long for the OS: " & Path;
+      end if;
+   end Check_Not_Too_Long;
 
    ---------------
    -- Canonical --
