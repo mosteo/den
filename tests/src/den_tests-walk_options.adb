@@ -331,7 +331,29 @@ procedure Den_Tests.Walk_Options is
          Copy (Top, Dest);
       end Do_Copy;
 
-      Raised_Find, Raised_Start, Raised_Ls, Raised_Du, Raised_Copy : Boolean;
+      procedure Do_Copy_Start is
+      begin
+         Copy (Long_Path (30), Dest);
+      end Do_Copy_Start;
+
+      procedure Do_Delete_File is
+      begin
+         Delete_File (Long_Path (30));
+      end Do_Delete_File;
+
+      procedure Do_Delete_Directory is
+      begin
+         Delete_Directory (Long_Path (30));
+      end Do_Delete_Directory;
+
+      procedure Do_Delete_Tree is
+      begin
+         Delete_Tree (Top);
+      end Do_Delete_Tree;
+
+      Raised_Find, Raised_Start, Raised_Ls, Raised_Du, Raised_Copy,
+      Raised_Copy_Start, Raised_Del_File, Raised_Del_Dir, Raised_Del_Tree :
+      Boolean;
    begin
       if Dir_Separator /= '/' then
          return;
@@ -353,6 +375,11 @@ procedure Den_Tests.Walk_Options is
       Create_Directory (Dest);
       Raised_Copy  := Raises (Do_Copy'Access);
 
+      Raised_Copy_Start := Raises (Do_Copy_Start'Access);
+      Raised_Del_File   := Raises (Do_Delete_File'Access);
+      Raised_Del_Dir    := Raises (Do_Delete_Directory'Access);
+      Raised_Del_Tree   := Raises (Do_Delete_Tree'Access);
+
       Remove (Top);
       Remove (Dest);
 
@@ -361,6 +388,10 @@ procedure Den_Tests.Walk_Options is
       Assert (Raised_Ls, "Ls took a long path as missing");
       Assert (Raised_Du, "Du stopped silently at the limit of the OS");
       Assert (Raised_Copy, "Copy failed unclearly at the limit of the OS");
+      Assert (Raised_Copy_Start, "Copy took a long start as missing");
+      Assert (Raised_Del_File, "Delete_File took a long path as missing");
+      Assert (Raised_Del_Dir, "Delete_Directory took a long path as missing");
+      Assert (Raised_Del_Tree, "Delete_Tree failed unclearly at the limit");
    end Check_Too_Long;
 
 begin

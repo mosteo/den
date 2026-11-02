@@ -105,6 +105,11 @@ package Den.Filesystem is
    procedure Delete_Directory
      (This : Path;
       Options : Delete_Directory_Options := (others => <>));
+   --  Without Recursive, This must be an empty directory, and otherwise nothing
+   --  is deleted. With Recursive, a missing path is not an error, and This can
+   --  be of any kind. Softlinks found are treated according to Delete_Files, so
+   --  by default they are removed and what they point to is left alone. Special
+   --  files are removed, unlike what Delete_File does by itself.
 
    procedure Rmdir
      (This    : Path;
@@ -112,7 +117,7 @@ package Den.Filesystem is
       renames Delete_Directory;
 
    procedure Delete_Tree (This : Path);
-   --  Recursive deletion
+   --  Recursive deletion, see Delete_Directory
 
    function Delete_Empty_Tree (This : Path) return Boolean;
    --  Delete a full tree only if is already empty (nothing but empty folders).

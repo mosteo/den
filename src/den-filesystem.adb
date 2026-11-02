@@ -180,6 +180,7 @@ package body Den.Filesystem is
 
       case Kind (Src) is
          when Nothing =>
+            OS.Check_Not_Too_Long (Src);
             raise Name_Error with Error ("non-existent source: " & Src);
          when File =>
             Copy_File;
@@ -307,40 +308,37 @@ package body Den.Filesystem is
    begin
       Log ("deleting: " & This & P (Kind (This)'Image) & " ...");
 
-      --  Diagnostics
-
       case Kind (This) is
          when Nothing =>
+            OS.Check_Not_Too_Long (This);
+
+            --  A tree might be already gone, or parts of it by the time we
+            --  get to them, but nothing has to be done in that case.
             if not Options.Recursive then
                raise Name_Error with
                Error ("target does not exist: " & This);
             end if;
-         when File | Softlink =>
+
+         when Directory =>
+            if Options.Recursive then
+               for Item of Iterators.Iterate (This) loop
+                  Delete_Directory (This / Item, Options);
+               end loop;
+            end if;
+
+            --  Otherwise, this fails if not empty, without having touched it
+            OS.Remove_Directory (This);
+
+         when File | Softlink | Special =>
             if not Options.Recursive then
                raise Use_Error with
                Error ("target kind is not deletable without recursive: "
                       & This & P (Kind (This)'Image));
+            elsif Kind (This) = Special then
+               OS.Delete_File (This);
+            else
+               Delete_File (This, Options.Delete_Files);
             end if;
-         when Special =>
-            raise Use_Error with
-            Error ("target kind is not deletable: "
-                   & This & P (Kind (This)'Image));
-         when Directory =>
-            null;
-      end case;
-
-      --  Actual deletion
-
-      case Kind (This) is
-         when Directory =>
-            for Item of Iterators.Iterate (This) loop
-               Delete_Directory (This / Item, Options);
-            end loop;
-            OS.Remove_Directory (This); -- Should be empty now
-         when File | Softlink =>
-            Delete_File (This, Options.Delete_Files);
-         when others =>
-            raise Program_Error with Error ("should be unreachable");
       end case;
 
       Log ("deleting: " & This & P (Kind (This)'Image) & " OK");
@@ -476,6 +474,8 @@ package body Den.Filesystem is
 
       case Kind (This) is
          when Nothing =>
+            OS.Check_Not_Too_Long (This);
+
             if Options.Do_Not_Fail then
                Log ("skipping non-existent file: " & This);
                return;
