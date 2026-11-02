@@ -7,7 +7,7 @@ package Den with Preelaborate is
 
    Debug_Flag : constant String := "DEN_DEBUG";
    --  Set it in the environment to any value (even empty) to enable debug
-   --  logging output.
+   --  logging output, which goes to standard error.
 
    Bad_Operation : exception;
    --  Raised when some transformation between paths can be completed

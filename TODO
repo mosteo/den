@@ -1,3 +1,4 @@
-- Test Absnormal (add to Kinds tests)
-- Test Pseudocanonical (add to Kinds test)
-- Move any remaining C imports to Den.OS
+- Walk trees through open handles (openat/unlinkat, and their equivalent on
+  Windows), so a link swapped in during Delete_Tree cannot be followed, and so
+  that trees deeper than the OS path limit can be walked on Unix-like systems
+- Test on FreeBSD and OpenBSD in CI

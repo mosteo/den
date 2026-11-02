@@ -128,7 +128,9 @@ package Den.Filesystem is
       renames Delete_Directory;
 
    procedure Delete_Tree (This : Path);
-   --  Recursive deletion, see Delete_Directory
+   --  Recursive deletion, see Delete_Directory. Don't use it on trees that other
+   --  users can write to, as a folder replaced by a link in the middle of the
+   --  deletion would be followed.
 
    function Delete_Empty_Tree (This : Path) return Boolean;
    --  Delete a full tree only if is already empty (nothing but empty folders).

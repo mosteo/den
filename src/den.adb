@@ -24,7 +24,7 @@ package body Den is
       else
          Cached_Debug :=
            False
-           or else Ada.Environment_Variables.Exists ("DEN_DEBUG");
+           or else Ada.Environment_Variables.Exists (Debug_Flag);
          Cached_Debug_Valid := True;
          return Cached_Debug;
       end if;
@@ -39,7 +39,8 @@ package body Den is
    is
    begin
       if Debug then
-         GNAT.IO.Put_Line ("[DEN] " & Location & ": " & Message);
+         GNAT.IO.Put_Line
+           (GNAT.IO.Standard_Error, "[DEN] " & Location & ": " & Message);
       end if;
    end Log;
 
