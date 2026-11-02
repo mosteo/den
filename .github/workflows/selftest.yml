@@ -109,5 +109,7 @@ jobs:
 
             - name: Test
               shell: bash
+              env:
+                  DEN_EXPECT_SOFTLINKS: ${{ matrix.soft }}
               run: |
                   alr test

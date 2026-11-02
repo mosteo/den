@@ -1,5 +1,6 @@
 pragma Alire_Test;
 
+with Ada.Environment_Variables;
 with Ada.IO_Exceptions;
 with Ada.Text_IO;
 
@@ -131,29 +132,53 @@ procedure Den_Tests.Delete_Semantics is
       use GNAT.OS_Lib;
 
       Tree : constant Path := Test_Dir / "special";
-      Fifo : constant Path := Tree / "fifo";
+      Item : constant Path := Tree / "item";
 
-      Mkfifo  : String_Access := Locate_Exec_On_Path ("mkfifo");
-      Args    : Argument_List := (1 => new String'(Fifo));
+      --  Windows has no FIFOs, and those that its Unix-like tools emulate, which
+      --  may be in the PATH, are nothing special for the OS. It does have Unix
+      --  sockets, which only PowerShell can create without writing a program.
+      --  It must not close the socket, as that deletes its file.
+
+      Tool    : String_Access :=
+                  Locate_Exec_On_Path
+                    (if Dir_Separator = '/' then "mkfifo" else "pwsh.exe");
+      Args    : Argument_List :=
+                  (if Dir_Separator = '/'
+                   then (1 => new String'(Item))
+                   else
+                     (new String'("-NoProfile"),
+                      new String'("-Command"),
+                      new String'
+                        ("$s=[Net.Sockets.Socket]::new("
+                         & "[Net.Sockets.AddressFamily]::Unix,"
+                         & "[Net.Sockets.SocketType]::Stream,"
+                         & "[Net.Sockets.ProtocolType]::Unspecified);"
+                         & "$s.Bind([Net.Sockets.UnixDomainSocketEndPoint]"
+                         & "::new('" & Item & "'))")));
       Success : Boolean := False;
    begin
       Create_Directory (Tree);
 
-      if Mkfifo /= null then
-         Spawn (Mkfifo.all, Args, Success);
-         Free (Mkfifo);
+      if Tool /= null then
+         Spawn (Tool.all, Args, Success);
+         Free (Tool);
       end if;
-      Free (Args (1));
+      for Arg of Args loop
+         Free (Arg);
+      end loop;
 
       if not Success then
-         Ada.Text_IO.Put_Line ("Skipping as a FIFO cannot be created");
+         --  This must not go unnoticed where it should be working
+         Assert (not Ada.Environment_Variables.Exists ("GITHUB_ACTIONS"),
+                 "Special file not created in CI");
+         Ada.Text_IO.Put_Line ("Skipping as a special file cannot be created");
          return;
       end if;
 
-      Assert (Kind (Fifo) = Special);
+      Assert (Kind (Item) = Special, "Kind: " & Kind (Item)'Image);
 
       begin
-         Delete_File (Fifo);
+         Delete_File (Item);
          raise Program_Error with "Deleted a special file";
       exception
          when Ada.IO_Exceptions.Use_Error =>
@@ -161,14 +186,22 @@ procedure Den_Tests.Delete_Semantics is
       end;
 
       begin
-         Delete_Directory (Fifo);
+         Delete_Directory (Item);
          raise Program_Error with "Deleted a special file";
       exception
          when Ada.IO_Exceptions.Use_Error =>
             null;
       end;
 
-      Assert (Kind (Fifo) = Special);
+      begin
+         Copy (Item, Test_Dir / "copied_special");
+         raise Program_Error with "Copied a special file";
+      exception
+         when Ada.IO_Exceptions.Use_Error =>
+            null;
+      end;
+
+      Assert (Kind (Item) = Special);
 
       Touch (Tree / "file");
       Delete_Tree (Tree);
@@ -184,13 +217,7 @@ begin
    Check_Read_Only;
    Check_Not_Recursive;
    Check_Missing;
-
-   --  Windows has no FIFOs, and those that its Unix-like tools emulate, which
-   --  may be in the PATH, are nothing special for the OS
-
-   if Dir_Separator = '/' then
-      Check_Special;
-   end if;
+   Check_Special;
 
    Delete_Tree (Test_Dir);
 end Den_Tests.Delete_Semantics;

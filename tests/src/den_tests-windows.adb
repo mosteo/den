@@ -3,6 +3,7 @@ pragma Alire_Test;
 with AAA.Strings;
 
 with Ada.Environment_Variables;
+with Ada.IO_Exceptions;
 with Ada.Text_IO;
 
 with Den.Du;
@@ -348,6 +349,81 @@ procedure Den_Tests.Windows is
       Assert (Success, "Could not create junction: " & Name);
    end Make_Junction;
 
+   ------------------
+   -- Check_In_Use --
+   ------------------
+
+   --  The pagefile cannot be queried as other files, but it exists
+
+   procedure Check_In_Use is
+      use GNAT.OS_Lib;
+
+      procedure Check (Name : Path) is
+         Cmd     : String_Access := Locate_Exec_On_Path ("cmd.exe");
+         Args    : Argument_List := (new String'("/c"),
+                                     new String'("dir /a:h " & Name));
+         Success : Boolean;
+      begin
+         Spawn (Cmd.all, Args, Success);
+         Free (Cmd);
+         for Arg of Args loop
+            Free (Arg);
+         end loop;
+
+         if Success then
+            Assert (Kind (Name) = File, Name & ": " & Kind (Name)'Image);
+         end if;
+      end Check;
+   begin
+      Check ("C:\pagefile.sys");
+      Check ("D:\pagefile.sys");
+   end Check_In_Use;
+
+   --------------------
+   -- Check_Too_Long --
+   --------------------
+
+   --  Even the verbatim form has a limit, which isn't the same as not existing
+
+   procedure Check_Too_Long is
+      function Over_Limit (Levels : Positive) return Path
+      is (if Levels = 1
+          then Test_Dir / (1 .. 200 => 'd')
+          else Over_Limit (Levels - 1) / (1 .. 200 => 'd'));
+
+      Long : constant Path := Over_Limit (170);
+
+      function Raises (Operation : access procedure) return Boolean is
+      begin
+         Operation.all;
+         return False;
+      exception
+         when Ada.IO_Exceptions.Use_Error =>
+            return True;
+      end Raises;
+
+      procedure Do_Ls is
+      begin
+         Assert (Walk.Ls (Long).Is_Empty);
+      end Do_Ls;
+
+      procedure Do_Find is
+      begin
+         Assert (Walk.Find (Long).Is_Empty);
+      end Do_Find;
+
+      procedure Do_Delete is
+      begin
+         Delete_File (Long);
+      end Do_Delete;
+   begin
+      Assert (Long'Length > 32767);
+      Assert (Kind (Long) = Nothing);
+      Assert (Raises (Do_Ls'Access), "Ls took a long path as missing");
+      Assert (Raises (Do_Find'Access), "Find took a long path as missing");
+      Assert (Raises (Do_Delete'Access), "Delete_File took it as missing");
+   end Check_Too_Long;
+
    ---------------
    -- Dir_Shows --
    ---------------
@@ -449,6 +525,31 @@ procedure Den_Tests.Windows is
       Delete_Tree (Dir);
    end Check_Link_Chain;
 
+   -----------------------------
+   -- Check_Canonical_Relative --
+   -----------------------------
+
+   --  When there's no relative path, the result is still canonical
+
+   procedure Check_Canonical_Relative is
+      Other : constant Path := (if CWD (CWD'First) = 'C' then "D:\" else "C:\");
+      Dir   : constant Path := Test_Dir / "across";
+   begin
+      if Kind (Other) /= Directory then
+         Ada.Text_IO.Put_Line ("Skipping as there's no other drive");
+         return;
+      end if;
+
+      Create_Directory (Dir);
+      Make_Junction (Dir / "other", Other);
+
+      Assert (Relative (Test_Dir, Dir / "other", Canonicalize => True)
+              = Canonical (Dir / "other"));
+
+      Unlink (Dir / "other");
+      Delete_Directory (Dir);
+   end Check_Canonical_Relative;
+
    --------------------
    -- Check_Junction --
    --------------------
@@ -542,8 +643,12 @@ begin
    Check_Long_Paths (Absnormal (Test_Dir / "abs"));
    Check_Long_Paths (Test_Dir / "rel");
 
+   Check_In_Use;
+   Check_Too_Long;
+
    Check_Junction;
    Check_Copy_Junction;
+   Check_Canonical_Relative;
 
    if Kind ("canary") = Softlink then
       Check_Slashed_Target;

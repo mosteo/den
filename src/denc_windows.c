@@ -516,8 +516,10 @@ int c_is_too_long (const char *path)
     if (wide == NULL)
         return 0;
 
-    result = GetFileAttributesW (wide) == INVALID_FILE_ATTRIBUTES
-        && GetLastError () == ERROR_FILENAME_EXCED_RANGE;
+    // Over the maximum for any form of path, which not all calls report as such
+    result = wcslen (wide) > 32767
+        || (GetFileAttributesW (wide) == INVALID_FILE_ATTRIBUTES
+            && GetLastError () == ERROR_FILENAME_EXCED_RANGE);
 
     free (wide);
     return result;

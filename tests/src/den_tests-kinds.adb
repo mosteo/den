@@ -1,5 +1,6 @@
 pragma Alire_Test;
 
+with Ada.Environment_Variables;
 with Ada.Text_IO;
 
 with Den;
@@ -32,6 +33,16 @@ begin
          null;
    end;
    Assert (Kind ("kinds_nul") = Nothing);
+
+   --  Tests with softlinks skip themselves if the checkout doesn't create them,
+   --  so make sure this is what is meant to happen where it is known
+
+   if Ada.Environment_Variables.Exists ("DEN_EXPECT_SOFTLINKS") then
+      Assert ((Kind ("canary") = Softlink)
+              = (Ada.Environment_Variables.Value ("DEN_EXPECT_SOFTLINKS")
+                 = "true"),
+              "Unexpected kind of canary: " & Kind ("canary")'Image);
+   end if;
 
    --  Skip this test if softlinks are not supported
    if Kind ("canary") /= Softlink then

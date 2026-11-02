@@ -5,6 +5,8 @@ with Ada.Text_IO;
 
 with Den.Filesystem;
 
+with GNAT.OS_Lib;
+
 procedure Den_Tests.Copy_Options is
 
    use Den;
@@ -200,6 +202,51 @@ procedure Den_Tests.Copy_Options is
       Assert (Read (Top / "out_tree" / "sub" / "to_dir" / "inner") = "inner");
    end Check_Following;
 
+   ----------------------
+   -- Check_Attributes --
+   ----------------------
+
+   --  What to bring along is up to the options, for files and for folders
+
+   procedure Check_Attributes is
+      use GNAT.OS_Lib;
+
+      Top : constant Path := Fresh ("attributes");
+      Src : constant Path := Top / "src";
+
+      Only_Times  : constant Den.Filesystem.Copy_Options :=
+                      (Preserve_Timestamps  => True,
+                       Preserve_Permissions => False,
+                       others               => <>);
+      Only_Perms  : constant Den.Filesystem.Copy_Options :=
+                      (Preserve_Timestamps  => False,
+                       Preserve_Permissions => True,
+                       others               => <>);
+   begin
+      Create_Directory (Src);
+      Write (Src / "file", "contents");
+      Set_Read_Only (Src / "file");
+
+      --  So a new time can be told apart, with room for file systems that only
+      --  keep two seconds of precision
+
+      delay 2.5;
+
+      Create_Directory (Top / "times");
+      Copy (Src, Top / "times", Only_Times);
+      Assert (File_Time_Stamp (Top / "times" / "file")
+              = File_Time_Stamp (Src / "file"), "Timestamp of file");
+      Assert (File_Time_Stamp (Top / "times")
+              = File_Time_Stamp (Src), "Timestamp of folder");
+      Assert (Is_Writable_File (Top / "times" / "file"), "Not asked to copy");
+
+      Create_Directory (Top / "perms");
+      Copy (Src, Top / "perms", Only_Perms);
+      Assert (File_Time_Stamp (Top / "perms" / "file")
+              /= File_Time_Stamp (Src / "file"), "Not asked to copy");
+      Assert (not Is_Writable_File (Top / "perms" / "file"), "Permissions");
+   end Check_Attributes;
+
    -----------------
    -- Check_Cycle --
    -----------------
@@ -230,6 +277,7 @@ begin
    Check_Options;
    Check_Same_File;
    Check_Inside;
+   Check_Attributes;
 
    if Kind ("canary") = Softlink then
       Check_Following;

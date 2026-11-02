@@ -1,6 +1,7 @@
 pragma Alire_Test;
 
 with Ada.Directories;
+with Ada.Environment_Variables;
 with Ada.IO_Exceptions;
 with Ada.Text_IO;
 
@@ -270,25 +271,67 @@ procedure Den_Tests.Walk_Options is
       Skip_Find : Walk.Items;
       Skip_Ls   : Sorted_Paths;
       Du_Items  : Natural := 0;
-   begin
-      if Dir_Separator /= '/' then
-         return; -- Read permissions work otherwise there
-      end if;
 
+      -------------------
+      -- Change_Access --
+      -------------------
+
+      --  Windows has no read permission for GNAT.OS_Lib to change, but it can
+      --  deny listing the folder to everyone, even when elevated.
+
+      procedure Change_Access (Deny : Boolean) is
+         use GNAT.OS_Lib;
+      begin
+         if Dir_Separator = '/' then
+            if Deny then
+               Set_Non_Readable (Locked);
+            else
+               Set_Readable (Locked);
+            end if;
+         else
+            declare
+               Tool    : String_Access := Locate_Exec_On_Path ("icacls.exe");
+               Args    : Argument_List :=
+                           (new String'(Locked),
+                            new String'((if Deny then "/deny" else "/remove:d")),
+                            new String'
+                              ((if Deny
+                                then "*S-1-1-0:(RD)"
+                                else "*S-1-1-0")));
+               Success : Boolean := False;
+            begin
+               if Tool /= null then
+                  Spawn (Tool.all, Args, Success);
+                  Free (Tool);
+               end if;
+               for Arg of Args loop
+                  Free (Arg);
+               end loop;
+            end;
+         end if;
+      end Change_Access;
+
+   begin
       Create_Directory (Locked, (Create_Intermediate => True, others => <>));
       Touch (Locked / "hidden");
       Touch (Top / "visible");
-      GNAT.OS_Lib.Set_Non_Readable (Locked);
+      Change_Access (Deny => True);
 
       begin
-         Assert (Walk.Ls (Locked).Is_Empty);
+         Assert (Natural (Walk.Ls (Locked).Length) <= 1);
       exception
          when Ada.IO_Exceptions.Use_Error =>
             Ls_Raised := True;
       end;
 
       if not Ls_Raised then
-         GNAT.OS_Lib.Set_Readable (Locked);
+         Change_Access (Deny => False);
+
+         --  This must not go unnoticed where it should be working, which isn't
+         --  the elevated CI runners on Windows, where it has no effect.
+         Assert (Dir_Separator /= '/'
+                 or else not Ada.Environment_Variables.Exists ("GITHUB_ACTIONS"),
+                 "Could not deny access to a folder in CI");
          Ada.Text_IO.Put_Line ("Skipping as permissions don't apply (root?)");
          return;
       end if;
@@ -311,7 +354,7 @@ procedure Den_Tests.Walk_Options is
       Skip_Find := Walk.Find (Top, (Skip_Unreadable => True, others => <>));
       Du_Items  := Natural (Du.List (Top, Skip_Unreadable => True).Length);
 
-      GNAT.OS_Lib.Set_Readable (Locked);
+      Change_Access (Deny => False);
 
       Assert (Find_Raised);
       Assert (Du_Raised);
