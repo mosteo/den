@@ -442,17 +442,29 @@ package body Den.Filesystem is
    procedure Link (From, Target : Path;
                    Options      : Link_Options := (others => <>))
    is
+      --  Where the link really is, which is what a relative target starts from
+      --  and not what the path says if it goes through another link.
+      Real_Parent : constant Path :=
+                      Pseudocanonical (Parent (Absolute (From)));
+
       Abs_Target : constant Path :=
         (if Is_Relative (Target) then
-            Absnormal (Parent (Absnormal (From)) / Target)
+            Real_Parent / Target
          else
             Target);
 
-      Rel_Target : constant Path :=
-         (if Options.Relative_Target_From_Absolute_Path then
-               Relative (Parent (Absolute (From)), Abs_Target)
-          else
-               Abs_Target);
+      ----------------
+      -- Rel_Target --
+      ----------------
+
+      function Rel_Target return Path is
+      begin
+         return Relative (Real_Parent, Abs_Target);
+      exception
+         when Bad_Operation =>
+            return Dots_Current_Dir; -- The target is the parent of the link
+      end Rel_Target;
+
    begin
       Log ("linking: " & From
            & " --> "
@@ -484,17 +496,13 @@ package body Den.Filesystem is
          end if;
       end if;
 
-      if Kind (From) /= Nothing then
-         if Options.Overwrite_Existing and then Kind (From) = Softlink
-         then
-            Delete_File (From,
-               (Delete_Softlinks => Delete_Link, others => <>));
-         else
-               --  We don't want to overwrite an existing link
-            raise Use_Error with
-               Error ("item at new link path already exists: " & From &
-                        " (kind: " & Kind (From)'Image & ")");
-         end if;
+      if Kind (From) /= Nothing
+        and then not (Options.Overwrite_Existing and then Kind (From) = Softlink)
+      then
+         --  We don't want to overwrite an existing link
+         raise Use_Error with
+            Error ("item at new link path already exists: " & From &
+                     " (kind: " & Kind (From)'Image & ")");
       end if;
 
       if Kind (Abs_Target) = Nothing and then not Options.Allow_Missing_Target
@@ -503,9 +511,15 @@ package body Den.Filesystem is
            Error ("target does not exist: " & Abs_Target);
       end if;
 
+      --  Only now that nothing can stop the new link for those reasons
+
+      if Kind (From) /= Nothing then
+         Delete_File (From, (Delete_Softlinks => Delete_Link, others => <>));
+      end if;
+
       OS.Create_Link (Target => Target,
                       Name   => From,
-                      Is_Dir => Kind (Abs_Target) = Directory);
+                      Is_Dir => Target_Kind (Abs_Target) = Directory);
 
       pragma Assert (Kind (From) = Softlink,
                      "link not created: " & From & P (Kind (From)'Image));
@@ -791,8 +805,8 @@ package body Den.Filesystem is
    begin
       Log ("Relative: " & From & " --> " & Into & " ...");
 
-      --  Start by using the parent if From is not a folder
-      if Exists (From) and then Kind (From) /= Directory then
+      --  From has to be a folder, if it exists, or lead to one
+      if Exists (From) and then Target_Kind (From) /= Directory then
          raise Use_Error with
            Error ("From is not a directory: " & From
                   & " (kind: " & Kind (From)'Image & ")");
@@ -801,7 +815,7 @@ package body Den.Filesystem is
       --  If the first element is different, these are paths into different
       --  drives or network locations
       if not Same_Root (F.First_Element, T.First_Element) then
-         return Absnormal (Into);
+         return T.To_Path;
       end if;
 
       --  Remove the common prefix

@@ -431,6 +431,24 @@ procedure Den_Tests.Windows is
       Delete_Tree (Tree);
    end Check_Copy_Broken_Dir_Link;
 
+   ----------------------
+   -- Check_Link_Chain --
+   ----------------------
+
+   --  A link to a link to a folder must be flagged as a link to a folder
+
+   procedure Check_Link_Chain is
+      Dir : constant Path := Test_Dir / "chain";
+   begin
+      Create_Directory (Dir / "real", (Create_Intermediate => True,
+                                       others              => <>));
+      Link (Dir / "first", "real");
+      Create_Directory (Dir / "holder");
+      Link (Dir / "holder" / "second", ".." / "first");
+      Assert (Dir_Shows (Dir / "holder", "SYMLINKD"));
+      Delete_Tree (Dir);
+   end Check_Link_Chain;
+
    --------------------
    -- Check_Junction --
    --------------------
@@ -530,6 +548,7 @@ begin
    if Kind ("canary") = Softlink then
       Check_Slashed_Target;
       Check_Copy_Broken_Dir_Link;
+      Check_Link_Chain;
       Check_Long_Link (Test_Dir / "link");
    else
       Ada.Text_IO.Put_Line ("Skipping link tests as they are not supported");

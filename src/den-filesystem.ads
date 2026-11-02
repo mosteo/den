@@ -34,14 +34,20 @@ package Den.Filesystem is
                       Canonicalize : Boolean := False)
                       return Path;
    --  Try to find a relative path from From into Into; this may be impossible
-   --  on Windows for paths in different drive letters. From and Into are
-   --  Absnormalized prior to search, unless Canonicalize, in which case
-   --  they're Pseudocanonicalized. If no relative path can be found, an
-   --  absolute path to Into will be returned. TODO/WARNING: consider whether
-   --  the filesystem is case-insensitive or case-preserving. Currently no case
-   --  transformations will be applied and case-sensitive will be presumed.
-   --  NOTE: From should be a folder. This will be detected for existing paths,
-   --  but is not for hypothetical non-existing paths.
+   --  on Windows for paths in different drive letters or network locations.
+   --  From and Into are Absnormalized prior to search, unless Canonicalize, in
+   --  which case they're Pseudocanonicalized. Without Canonicalize, the result
+   --  is valid as long as From doesn't go through softlinks. If no relative
+   --  path can be found, an absolute path to Into will be returned.
+   --
+   --  Only drive letters and server names are compared without regard to case
+   --  on Windows. Otherwise, paths are compared as they are, because case can
+   --  vary within a same filesystem. The result is correct in any case, but it
+   --  may be longer than needed. Canonicalize avoids that for existing paths.
+   --
+   --  NOTE: From should be a folder, or lead to one. This will be detected for
+   --  existing paths, raising Use_Error, but is not for hypothetical
+   --  non-existing paths. Raises Bad_Operation if both are the same path.
 
    -----------------------
    --  File Operations  --
