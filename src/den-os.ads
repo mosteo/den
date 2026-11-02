@@ -12,10 +12,6 @@ private package Den.OS with Preelaborate is
    function Is_Softlink (Path : String) return Boolean;
    --  Returns True if Path is a softlink
 
-   function Link_Length (Path : String) return Natural;
-   --  Returns the length of the target of the softlink at Path
-   --  Raises Constraint_Error if Path is not a softlink
-
    function Link_Target (Path : String) return String;
    --  Returns the target of the softlink at Path
    --  Raises Use_Error if operation fails

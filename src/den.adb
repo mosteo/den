@@ -429,7 +429,7 @@ package body Den is
       if not Is_Softlink (This) then
          raise Constraint_Error with "Not a softlink: " & This;
       end if;
-      return OS.Link_Length (This);
+      return OS.Link_Target (This)'Length;
    end Target_Length;
 
    ------------

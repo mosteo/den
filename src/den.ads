@@ -22,7 +22,9 @@ package Den with Preelaborate is
    Dots_Parent_Dir  : constant String := "..";
    Dots_Current_Dir : constant String := ".";
 
-   --  A raw, system-encoded path denoting a file or folder, but well-formed
+   --  A raw path denoting a file or folder, but well-formed. Names are opaque
+   --  for Den: they are the bytes stored by the filesystem on Unix-like
+   --  systems, and UTF-8 on Windows regardless of the code page.
    subtype Path is String
      with Dynamic_Predicate => Path /= ""
      --  not empty
@@ -236,8 +238,8 @@ package Den with Preelaborate is
 
    function Target_Length (This : Path) return Natural
      with Pre => Kind (This) = Softlink;
-   --  The length of a softlink target name. Not generally useful to clients
-   --  but who knows...
+   --  The length in bytes of a softlink target name. Not generally useful to
+   --  clients but who knows...
 
    function Target (This : Path) return String
      with Post =>

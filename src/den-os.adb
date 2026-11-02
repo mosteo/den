@@ -43,14 +43,6 @@ package body Den.OS is
                            return C.int
       with Import, Convention => C;
 
-   ----------------
-   -- C_Link_Len --
-   ----------------
-
-   function C_Link_Len (Path : Chars_Ptr)
-                        return C.int
-      with Import, Convention => C;
-
    -------------------
    -- C_Link_Target --
    -------------------
@@ -126,32 +118,13 @@ package body Den.OS is
    end Is_Softlink;
 
    -----------------
-   -- Link_Length --
-   -----------------
-
-   function Link_Length (Path : String) return Natural is
-      use type C.int;
-
-      Result : constant C.int := C_Link_Len (To_C (Path).To_Ptr);
-   begin
-      if Result < 0 then
-         raise Constraint_Error with
-           "Cannot get link length: " & Path &
-           " (error: " & Result'Image & ")";
-      end if;
-
-      return Natural (Result);
-   end Link_Length;
-
-   -----------------
    -- Link_Target --
    -----------------
 
    function Link_Target (Path : String) return String is
       use type C.int;
 
-      Initial_Length : constant Natural := Link_Length (Path);
-      Bufsize : Integer := Initial_Length + 1;
+      Bufsize : Integer := 1024; -- Enough almost always
    begin
       loop
          declare

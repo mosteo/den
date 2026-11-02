@@ -1,6 +1,7 @@
 pragma Alire_Test;
 
 with Ada.Text_IO; use Ada.Text_IO;
+with GNAT.OS_Lib;
 with Interfaces.C; use Interfaces.C;
 with Interfaces.C.Strings; use Interfaces.C.Strings;
 
@@ -27,11 +28,14 @@ procedure Den_Tests.C_Interface is
    -- Test variables
    Current_Dir : constant String := ".";
 
+   -- Output buffers must not contain any nul, because New_Char_Array only
+   -- allocates up to the first one
+
    -- Test the c_canonical function with a small buffer
    procedure Test_Canonical_Small_Buffer is
       Input_Path_Ptr : chars_ptr := New_String (Current_Dir);
       Buffer_Size    : constant size_t := 5; -- Intentionally small
-      Buffer         : constant char_array (1 .. Buffer_Size) := (others => nul);
+      Buffer         : constant char_array (1 .. Buffer_Size) := (others => 'x');
       Buffer_Ptr     : chars_ptr := new_Char_Array (Buffer);
       Result         : Integer;
    begin
@@ -59,7 +63,7 @@ procedure Den_Tests.C_Interface is
       Missing : chars_ptr := New_String ("den_tests_missing_path");
       Dir     : chars_ptr := New_String (Current_Dir);
       Target  : chars_ptr := New_String ("den_tests_missing_target");
-      Buffer  : constant char_array (1 .. 64) := (others => nul);
+      Buffer  : constant char_array (1 .. 64) := (others => 'x');
       Output  : chars_ptr := New_Char_Array (Buffer);
 
       procedure Check (Name : String; Result : int) is
@@ -86,11 +90,59 @@ procedure Den_Tests.C_Interface is
       Free (Output);
    end Test_Errors_Are_Positive;
 
+   -- A file that is open for writing can still be queried
+   procedure Test_Canonical_Of_Open_File is
+      Name   : constant String := "c_interface_open_file";
+      File   : File_Type;
+      Input  : chars_ptr := New_String (Name);
+      Buffer : constant char_array (1 .. 32768) := (others => 'x');
+      Output : chars_ptr := New_Char_Array (Buffer);
+      Result : int;
+   begin
+      Create (File, Out_File, Name);
+      Result := C_Canonical (Input, Output, Buffer'Length);
+      Delete (File);
+
+      pragma Assert (Result = 0,
+                     "Cannot canonicalize an open file, error" & Result'Image);
+
+      Free (Input);
+      Free (Output);
+   end Test_Canonical_Of_Open_File;
+
+   -- A UNC path must not come back relative, as "UNC\server\share"
+   procedure Test_Canonical_Of_UNC is
+      Input  : chars_ptr := New_String ("\\localhost\C$\Windows");
+      Buffer : constant char_array (1 .. 32768) := (others => 'x');
+      Output : chars_ptr := New_Char_Array (Buffer);
+      Result : int;
+   begin
+      if GNAT.OS_Lib.Directory_Separator = '\' then
+         Result := C_Canonical (Input, Output, Buffer'Length);
+
+         if Result = 0 then
+            Put_Line ("UNC path resolved to: " & Value (Output));
+            pragma Assert (String'(Value (Output, 2)) = "\\",
+                           "Not a UNC path: " & Value (Output));
+         else
+            Put_Line ("Skipping UNC test as the share is not available:"
+                      & Result'Image);
+         end if;
+      end if;
+
+      Free (Input);
+      Free (Output);
+   end Test_Canonical_Of_UNC;
+
 begin
    Put_Line ("Starting C Interface Tests");
 
    -- Test c_canonical with a buffer that's too small
    Test_Canonical_Small_Buffer;
+
+   Test_Canonical_Of_Open_File;
+
+   Test_Canonical_Of_UNC;
 
    Test_Errors_Are_Positive;
 
