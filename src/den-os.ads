@@ -12,6 +12,12 @@ private package Den.OS with Preelaborate is
    --  Returns the canonical path for Input_Path
    --  Raises Use_Error if operation fails
 
+   function Full_Path (Path : String) return String;
+   --  Returns the absolute form that Windows gives to Path, which may depend
+   --  on the current drive or the current directory of a drive. Only meant for
+   --  the paths that have those dependencies, which Windows alone has.
+   --  Raises Use_Error if operation fails
+
    function Link_Target (Path : String) return String;
    --  Returns the target of the softlink at Path
    --  Raises Use_Error if operation fails

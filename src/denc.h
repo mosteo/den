@@ -15,6 +15,11 @@
 // Returns an error code
 int c_canonical (const char *inputPath, char *fullPath, size_t bufsiz);
 
+// Returns an error code. Fills fullPath with the absolute form that Windows gives
+// to inputPath. It doesn't apply elsewhere, where paths are either absolute or
+// relative to the current directory, so it just fails.
+int c_full_path (const char *inputPath, char *fullPath, size_t bufsiz);
+
 // What is at path, without following it. Failures of any kind mean there is
 // nothing reachable there. The values match those of Den.Kinds.
 enum { DEN_NOTHING, DEN_DIRECTORY, DEN_FILE, DEN_SOFTLINK, DEN_SPECIAL };

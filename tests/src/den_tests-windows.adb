@@ -1,5 +1,8 @@
 pragma Alire_Test;
 
+with AAA.Strings;
+
+with Ada.Environment_Variables;
 with Ada.Text_IO;
 
 with Den.Filesystem;
@@ -48,6 +51,156 @@ procedure Den_Tests.Windows is
       Assert (Target (The_Link) = "sub\file");
       Assert (Canonical (The_Link) = Canonical (Real));
    end Check_Slashed_Target;
+
+   --------------------------
+   -- Check_Classification --
+   --------------------------
+
+   procedure Check_Classification is
+      Drive : constant String := CWD (CWD'First .. CWD'First + 1);
+   begin
+      --  These depend on the current drive or directory
+
+      Assert (not Is_Absolute ("\foo"));
+      Assert (not Is_Absolute ("/foo"));
+      Assert (not Is_Absolute ("C:foo"));
+      Assert (not Is_Absolute ("C:"));
+      Assert (not Is_Root ("C:"));
+      Assert (Absolute ("\foo") = Root (CWD) & "foo");
+      Assert (Absolute (Drive & "foo") = CWD / "foo");
+
+      --  These don't
+
+      Assert (Is_Absolute ("C:\foo"));
+      Assert (Is_Absolute ("C:/foo"));
+      Assert (Is_Absolute ("\\srv\share\x"));
+      Assert (Is_Root ("C:\"));
+      Assert (Is_Root ("C:/"));
+      Assert (Is_Root ("\\srv\share"));
+      Assert (Is_Root ("\\srv\share\"));
+
+      Assert (Root ("C:/foo") = "C:\");
+      Assert (Root ("\\srv\share\x") = "\\srv\share\");
+
+      --  Only plain relative paths can be appended
+
+      begin
+         if "x" / "\foo" /= "" then
+            raise Program_Error with "Appended a rooted path";
+         end if;
+      exception
+         when Assertion_Error =>
+            null;
+      end;
+
+      Assert ("C:\" / "y" = "C:\y");
+      Assert ("C:/" / "y" = "C:/y");
+      Assert ("C:" / "y" = "C:y");
+      Assert ("\\srv\share" / "y" = "\\srv\share\y");
+   end Check_Classification;
+
+   -----------------
+   -- Check_Scrub --
+   -----------------
+
+   procedure Check_Scrub is
+   begin
+      Assert (Scrub ("c:\") = "C:\");
+      Assert (Scrub ("c:\foo") = "C:\foo");
+      Assert (Scrub ("C:\foo\") = "C:\foo");
+
+      --  Forward slashes are left alone, as git produces such paths
+
+      Assert (Scrub ("c:/foo") = "C:/foo");
+      Assert (Scrub ("foo/bar") = "foo/bar");
+   end Check_Scrub;
+
+   ---------------------------
+   -- Check_Forward_Slashes --
+   ---------------------------
+
+   --  Paths from git use these, and Den must understand them as the OS does
+
+   procedure Check_Forward_Slashes is
+      Real    : constant Path := Absnormal (Test_Dir / "slashes");
+      Forward : constant Path := AAA.Strings.Replace (Real, "\", "/");
+   begin
+      Assert ("a/b" not in Part);
+      Assert (Name ("C:/x/y") = "y");
+      Assert (Has_Parent ("x/y"));
+      Assert (Parent ("x/y") = "x");
+      Assert (Parent ("C:/x/y") = "C:\x");
+      Assert (Parent ("C:/x") = "C:\");
+      Assert (Normal ("a/b/../c") = "a\c");
+      Assert (Relative ("C:/a/b", "C:/a/c") = "..\c");
+
+      Create_Directory (Forward);
+      Assert (Kind (Real) = Directory);
+
+      Touch (Real / "file");
+      Assert (Kind (Forward & "/file") = File);
+      Assert (Canonical (Forward & "/file") = Canonical (Real / "file"));
+      Assert (Parent (Forward & "/file") = Real);
+      Assert (Relative (Forward, Forward & "/file") = "file");
+      Assert (Natural (Walk.Find (Forward).Length) = 1);
+
+      Copy (Forward & "/file", Forward & "/copy");
+      Assert (Kind (Real / "copy") = File);
+
+      Delete_Tree (Forward);
+      Assert (Kind (Real) = Nothing);
+   end Check_Forward_Slashes;
+
+   --------------------
+   -- Check_Relative --
+   --------------------
+
+   procedure Check_Relative is
+   begin
+      --  Drive letters are the same in any case
+
+      Assert (Relative ("C:\a\b", "c:\a\c") = "..\c");
+      begin
+         Assert (Relative ("C:\a", "c:\a") = "");
+         raise Program_Error with "Unexpected pass";
+      exception
+         when Bad_Operation =>
+            null;
+      end;
+
+      --  Nothing relative across drives or network locations
+
+      Assert (Relative ("C:\a", "D:\b") = "D:\b");
+      Assert (Relative ("\\srv\sh\a", "\\srv\other\b") = "\\srv\other\b");
+      Assert (Relative ("\\srv1\sh\a", "\\srv2\sh\b") = "\\srv2\sh\b");
+
+      Assert (Relative ("\\srv\sh\a", "\\srv\sh\b") = "..\b");
+   end Check_Relative;
+
+   ---------------
+   -- Check_UNC --
+   ---------------
+
+   procedure Check_UNC is
+      use AAA.Strings;
+
+      Share : constant Path := "\\localhost\C$\Windows";
+   begin
+      if Kind (Share) /= Directory then
+         --  This must not go unnoticed where it should be working
+         Assert (not Ada.Environment_Variables.Exists ("GITHUB_ACTIONS"),
+                 "Administrative share not available in CI");
+         Ada.Text_IO.Put_Line ("Skipping as the share is not available");
+         return;
+      end if;
+
+      Assert (To_Lower_Case (Canonical (Share)) = To_Lower_Case (Share));
+      Assert (Kind (Root (Share)) = Directory);
+      Assert (Root (Share) = "\\localhost\C$\");
+      Assert (Parent (Share) = "\\localhost\C$\");
+      Assert (Name (Share) = "Windows");
+      Assert (not Walk.Ls (Share).Is_Empty);
+   end Check_UNC;
 
    -------------------
    -- Make_Junction --
@@ -154,6 +307,12 @@ begin
    --  devices, like the same one in a folder, depends on the Windows version.
 
    Assert (Kind ("NUL") = Special);
+
+   Check_Classification;
+   Check_Scrub;
+   Check_Forward_Slashes;
+   Check_Relative;
+   Check_UNC;
 
    Check_Junction;
 

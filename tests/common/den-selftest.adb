@@ -99,7 +99,8 @@ begin
       --  non-existent.
 
       --  Canonical path
-      pragma Assert (R in Canonical_Path);
+      pragma Assert ((R in Canonical_Path) = (Dir_Separator = '/'));
+      --  On Windows, that root depends on the current drive
       pragma Assert (Root (CWD) in Canonical_Path);
       pragma Assert (R / "asdf" not in Canonical_Path); -- non-existing
       pragma Assert (R / "." not in Canonical_Path);

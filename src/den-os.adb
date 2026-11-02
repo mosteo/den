@@ -13,6 +13,15 @@ package body Den.OS is
                          return C.int
       with Import, Convention => C;
 
+   -----------------
+   -- C_Full_Path --
+   -----------------
+
+   function C_Full_Path (Input_Path, Full_Path : Chars_Ptr;
+                         Bufsiz               : C.size_t)
+                         return C.int
+      with Import, Convention => C;
+
    ------------
    -- C_Kind --
    ------------
@@ -113,6 +122,45 @@ package body Den.OS is
          end;
       end loop;
    end Canonical;
+
+   ---------------
+   -- Full_Path --
+   ---------------
+
+   function Full_Path (Path : String) return String is
+      use type C.int;
+
+      Bufsize : Integer := 32768; -- Theoretically, this is Windows max
+   begin
+      Check_Path (Path);
+
+      loop
+         declare
+            Cbuf : C_String := Buffer (Bufsize);
+            Code : constant C.int
+              := C_Full_Path (To_C (Path).To_Ptr,
+                              Cbuf.To_Ptr,
+                              Cbuf.C_Size);
+         begin
+            case Code is
+               when 0 =>
+                  return Cbuf.To_Ada;
+               when -1 =>
+                  if Integer'Last / 2 < Bufsize then
+                     raise Use_Error with
+                       "Buffer too small for full path: " & Path;
+                  else
+                     Bufsize := Bufsize * 2;
+                  end if;
+                  --  And try again
+               when others =>
+                  raise Use_Error with
+                    "Cannot get full path: " & Path &
+                    " (error: " & Code'Image & ")";
+            end case;
+         end;
+      end loop;
+   end Full_Path;
 
    -----------------
    -- Link_Target --

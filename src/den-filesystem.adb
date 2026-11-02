@@ -34,9 +34,12 @@ package body Den.Filesystem is
    --------------
 
    function Absolute (This : Path) return Absolute_Path
-   is (if Is_Absolute (This)
-       then This
-       else Current_Dir / This);
+   is (if Is_Absolute (This) then
+          This
+       elsif Is_Relative (This) then
+          Current_Dir / This
+       else
+          OS.Full_Path (This));
 
    ----------
    -- Copy --
@@ -324,10 +327,10 @@ package body Den.Filesystem is
                    Options      : Link_Options := (others => <>))
    is
       Abs_Target : constant Path :=
-        (if Is_Absolute (Target) then
-            Target
+        (if Is_Relative (Target) then
+            Absnormal (Parent (Absnormal (From)) / Target)
          else
-            Absnormal (Parent (Absnormal (From)) / Target));
+            Target);
 
       Rel_Target : constant Path :=
          (if Options.Relative_Target_From_Absolute_Path then
@@ -646,6 +649,20 @@ package body Den.Filesystem is
                       Canonicalize : Boolean := False)
                       return Path
    is
+
+      ---------------
+      -- Same_Root --
+      ---------------
+
+      --  Drive letters and server names are not case sensitive. This is not
+      --  done for the rest of the path, as that can vary in a same filesystem,
+      --  and a longer result is always correct whereas a shorter one may not.
+
+      function Same_Root (L, R : String) return Boolean
+      is (if Dir_Separator = '\'
+          then AAA.Strings.To_Lower_Case (L) = AAA.Strings.To_Lower_Case (R)
+          else L = R);
+
       F : Path_Parts := Parts
         (if Canonicalize
          then Pseudocanonical (From)
@@ -664,26 +681,27 @@ package body Den.Filesystem is
                   & " (kind: " & Kind (From)'Image & ")");
       end if;
 
-      --  Trivial case: the same path
-      if F = T then
-         raise Bad_Operation with
-           "Both paths are the same in Relative_Path: "
-           & From & " --> " & Into;
-      end if;
-
       --  If the first element is different, these are paths into different
-      --  drives:
-      if F.First_Element /= T.First_Element then
+      --  drives or network locations
+      if not Same_Root (F.First_Element, T.First_Element) then
          return Absnormal (Into);
       end if;
 
       --  Remove the common prefix
-      while F.First_Element = T.First_Element loop
+      loop
          F.Delete_First;
          T.Delete_First;
 
-         exit when F.Is_Empty or else T.Is_Empty;
+         exit when F.Is_Empty or else T.Is_Empty
+           or else F.First_Element /= T.First_Element;
       end loop;
+
+      --  Trivial case: the same path
+      if F.Is_Empty and then T.Is_Empty then
+         raise Bad_Operation with
+           "Both paths are the same in Relative_Path: "
+           & From & " --> " & Into;
+      end if;
 
       --  The paths are now at their divergence point; we must ascend as many
       --  times as parts remain in From.

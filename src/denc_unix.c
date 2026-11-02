@@ -38,6 +38,15 @@ int c_canonical (const char *inputPath, char *fullPath, size_t bufsiz)
     return result;
 }
 
+int c_full_path (const char *inputPath, char *fullPath, size_t bufsiz)
+{
+    (void) inputPath;
+    (void) fullPath;
+    (void) bufsiz;
+
+    return ENOTSUP;
+}
+
 int c_kind (const char *path)
 {
     struct stat sb;

@@ -344,6 +344,42 @@ int c_canonical (const char *inputPath, char *fullPath, size_t bufsiz)
     return result;
 }
 
+int c_full_path (const char *inputPath, char *fullPath, size_t bufsiz)
+{
+    int    error = 0;
+    WCHAR *wide  = to_wide (inputPath, &error);
+    WCHAR *full  = NULL;
+    DWORD  needed;
+    DWORD  length;
+
+    if (wide == NULL)
+        return error;
+
+    // The size needed including terminator, or 0 for error
+    needed = GetFullPathNameW (wide, 0, NULL, NULL);
+    full   = needed == 0 ? NULL : malloc (needed * sizeof (WCHAR));
+
+    if (needed == 0) {
+        error = last_error ();
+    } else if (full == NULL) {
+        error = ERROR_NOT_ENOUGH_MEMORY;
+    } else {
+        // The length excluding terminator, unless it has grown in the meantime
+        length = GetFullPathNameW (wide, needed, full, NULL);
+
+        if (length == 0)
+            error = last_error ();
+        else if (length >= needed)
+            error = ERR_BUFFER_TOO_SMALL;
+        else
+            error = from_wide (full, length, fullPath, bufsiz);
+    }
+
+    free (full);
+    free (wide);
+    return error;
+}
+
 // Whether Windows takes path for a device, which depends on its version. Only
 // the start of the result matters, and devices have short names.
 static int is_device (const WCHAR *path)
