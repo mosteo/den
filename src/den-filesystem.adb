@@ -49,156 +49,247 @@ package body Den.Filesystem is
                    Options  : Copy_Options := (others => <>))
    is
 
-      ---------------
-      -- Copy_File --
-      ---------------
+      Active : Sorted_Paths;
+      --  The real directories being copied when following links, which can
+      --  lead back to one of them.
 
-      procedure Copy_File is
+      -------------------
+      -- Delete_Target --
+      -------------------
+
+      --  Before overwriting, as they may be the same under different names
+
+      procedure Delete_Target (Src, Dst : Path) is
       begin
-         case Kind (Dst) is
-            when Nothing =>
-               --  The runtime can't deal with long paths on Windows
-               if On_Windows then
-                  OS.Copy_File (Src, Dst);
-               else
-                  Dirs.Copy_File (Src, Dst);
-               end if;
+         if Canonizable (Src) and then Canonical (Src) = Canonical (Dst) then
+            raise Use_Error with
+              Error ("source and destination are the same: "
+                     & Src & ", " & Dst);
+         end if;
 
-               Copy_Attributes (Src, Dst,
-                                Timestamps  => Options.Preserve_Timestamps,
-                                Permissions => Options.Preserve_Permissions);
-            when Directory =>
-               Copy (Src, Dst / Name (Src), Options);
-            when File =>
-               if Options.Overwrite_Files then
-                  OS.Delete_File (Dst);
-                  Copy_File;
-               else
-                  raise Use_Error with
-                    Error ("not overwriting exising target: " & Dst);
-               end if;
-            when Softlink | Special =>
-               raise Use_Error with
-                 Error ("not overwriting existing link/special target: "
-                        & Dst);
-         end case;
-      end Copy_File;
+         OS.Delete_File (Dst);
+      end Delete_Target;
 
-      --------------
-      -- Copy_Dir --
-      --------------
+      ---------------
+      -- Copy_Item --
+      ---------------
 
-      procedure Copy_Dir is
-      begin
-         case Kind (Dst) is
-            when Nothing =>
-               raise Name_Error with
-                 Error ("non-existent destination: " & Dst);
-            when File | Softlink | Special =>
-               raise Use_Error with
-                 Error ("not overwriting existing target (" & Kind (Dst)'Image
-                        & "): " & Dst);
-            when Directory =>
-               if not Options.Merge_Dirs and then
-                 Walk.Ls (Dst).Length not in 0
-               then
-                  raise Use_Error with
-                    Error ("not merging (disabled) into existing target: "
-                           & Dst);
-               end if;
-         end case;
+      procedure Copy_Item (Src, Dst : Path) is
 
-         --  Actually copy/merge
+         ---------------
+         -- Copy_File --
+         ---------------
 
-         for Item of Iterators.Iterate (Src) loop
-            case Kind (Src / Item) is
+         procedure Copy_File is
+         begin
+            case Kind (Dst) is
                when Nothing =>
-                  OS.Check_Not_Too_Long (Src / Item);
-                  raise Program_Error with Error ("item missing?: "
-                                                  & (Src / Item));
-               when Directory =>
-                  if Kind (Dst / Item) = Nothing then
-                     OS.Create_Directory (Dst / Item);
+                  --  The runtime can't deal with long paths on Windows
+                  if On_Windows then
+                     OS.Copy_File (Src, Dst);
+                  else
+                     Dirs.Copy_File (Src, Dst);
                   end if;
-                  Copy (Src / Item, Dst / Item);
 
-               when others =>
-                  Copy (Src / Item, Dst);
-            end case;
-         end loop;
-
-         --  Fix permissions if requested
-
-         Copy_Attributes (Src, Dst,
-                          Timestamps  => Options.Preserve_Timestamps,
-                          Permissions => Options.Preserve_Permissions);
-      end Copy_Dir;
-
-      ---------------
-      -- Copy_Link --
-      ---------------
-
-      procedure Copy_Link is
-      begin
-         case Kind (Dst) is
-            when Nothing =>
-               null; -- done below
-            when Directory =>
-               Copy (Src, Dst / Name (Src));
-               return;
-            when File =>
-               if Options.Overwrite_Files then
-                  OS.Delete_File (Dst);
-                  --  Copy done below
-               else
+                  Copy_Attributes
+                    (Src, Dst,
+                     Timestamps  => Options.Preserve_Timestamps,
+                     Permissions => Options.Preserve_Permissions);
+               when Directory =>
+                  Copy_Item (Src, Dst / Name (Src));
+               when File =>
+                  if Options.Overwrite_Files then
+                     Delete_Target (Src, Dst);
+                     Copy_File;
+                  else
+                     raise Use_Error with
+                       Error ("not overwriting exising target: " & Dst);
+                  end if;
+               when Softlink | Special =>
                   raise Use_Error with
-                  Error ("not overwriting exising target: " & Dst);
+                    Error ("not overwriting existing link/special target: "
+                           & Dst);
+            end case;
+         end Copy_File;
+
+         --------------
+         -- Copy_Dir --
+         --------------
+
+         procedure Copy_Dir is
+            Real : constant String :=
+                     (if Options.Resolve_Links then Canonical (Src) else "");
+         begin
+            case Kind (Dst) is
+               when Nothing =>
+                  raise Name_Error with
+                    Error ("non-existent destination: " & Dst);
+               when File | Softlink | Special =>
+                  raise Use_Error with
+                    Error ("not overwriting existing target ("
+                           & Kind (Dst)'Image & "): " & Dst);
+               when Directory =>
+                  if not Options.Merge_Dirs and then
+                    Walk.Ls (Dst).Length not in 0
+                  then
+                     raise Use_Error with
+                       Error ("not merging (disabled) into existing target: "
+                              & Dst);
+                  end if;
+            end case;
+
+            if Options.Resolve_Links then
+               if Active.Contains (Real) then
+                  raise Use_Error with
+                    Error ("links lead back to a folder being copied: "
+                           & Src);
                end if;
-            when Softlink | Special =>
-               raise Use_Error with
-                 Error ("not overwriting existing link/special target: "
-                        & Dst);
+
+               Active.Insert (Real);
+            end if;
+
+            --  Actually copy/merge
+
+            for Item of Iterators.Iterate (Src) loop
+               case Kind (Src / Item) is
+                  when Nothing =>
+                     OS.Check_Not_Too_Long (Src / Item);
+                     raise Program_Error with Error ("item missing?: "
+                                                     & (Src / Item));
+                  when Directory =>
+                     if Kind (Dst / Item) = Nothing then
+                        OS.Create_Directory (Dst / Item);
+                     end if;
+
+                  when others =>
+                     null;
+               end case;
+
+               Copy_Item (Src / Item, Dst / Item);
+            end loop;
+
+            if Options.Resolve_Links then
+               Active.Delete (Real);
+            end if;
+
+            --  Fix permissions if requested
+
+            Copy_Attributes (Src, Dst,
+                             Timestamps  => Options.Preserve_Timestamps,
+                             Permissions => Options.Preserve_Permissions);
+         end Copy_Dir;
+
+         ---------------
+         -- Copy_Link --
+         ---------------
+
+         procedure Copy_Link is
+         begin
+            case Kind (Dst) is
+               when Nothing =>
+                  null; -- done below
+               when Directory =>
+                  Copy_Item (Src, Dst / Name (Src));
+                  return;
+               when File =>
+                  if Options.Overwrite_Files then
+                     Delete_Target (Src, Dst);
+                     --  Copy done below
+                  else
+                     raise Use_Error with
+                     Error ("not overwriting exising target: " & Dst);
+                  end if;
+               when Softlink | Special =>
+                  raise Use_Error with
+                    Error ("not overwriting existing link/special target: "
+                           & Dst);
+            end case;
+
+            --  Here we recreate the link. Target might not yet be in place.
+            OS.Copy_Link (Source => Src, Name => Dst);
+         end Copy_Link;
+
+         ----------------------
+         -- Copy_Link_Target --
+         ----------------------
+
+         --  What a link points to is copied as if it were here. A file keeps
+         --  the name of the link, and a folder has its contents go into Dst, as
+         --  any other folder, which we create if needed.
+
+         procedure Copy_Link_Target is
+            Real : constant Path := Canonical (Src);
+         begin
+            if Kind (Real) = Directory then
+               if Kind (Dst) = Nothing then
+                  OS.Create_Directory (Dst);
+               end if;
+               Copy_Item (Real, Dst);
+            elsif Kind (Dst) = Directory then
+               Copy_Item (Real, Dst / Name (Src));
+            else
+               Copy_Item (Real, Dst);
+            end if;
+         end Copy_Link_Target;
+
+         ------------------
+         -- Copy_Special --
+         ------------------
+
+         procedure Copy_Special is
+         begin
+            raise Use_Error with Error ("cannot copy special file: " & Src);
+         end Copy_Special;
+
+      begin
+         Log ("Copy " & Src & P (Kind (Src)'Image)
+              & " --> "
+              & Dst & " ...");
+
+         case Kind (Src) is
+            when Nothing =>
+               OS.Check_Not_Too_Long (Src);
+               raise Name_Error with Error ("non-existent source: " & Src);
+            when File =>
+               Copy_File;
+            when Directory =>
+               Copy_Dir;
+            when Softlink =>
+               if Options.Resolve_Links and then Canonizable (Src) then
+                  Copy_Link_Target;
+               else
+                  Copy_Link;
+               end if;
+            when Special =>
+               Copy_Special;
          end case;
 
-         --  Here we recreate the link. Target might not yet be in place.
-         OS.Copy_Link (Source => Src, Name => Dst);
-      end Copy_Link;
-
-      ------------------
-      -- Copy_Special --
-      ------------------
-
-      procedure Copy_Special is
-      begin
-         raise Use_Error with Error ("cannot copy special file: " & Src);
-      end Copy_Special;
+         Log ("Copy " & Src & P (Kind (Src)'Image)
+              & " --> "
+              & Dst & P (Kind (Dst)'Image) & " OK");
+      end Copy_Item;
 
    begin
-      Log ("Copy " & Src & P (Kind (Src)'Image)
-           & " --> "
-           & Dst & " ...");
+      --  A folder can't go into itself. Nothing is done before finding out.
 
-      case Kind (Src) is
-         when Nothing =>
-            OS.Check_Not_Too_Long (Src);
-            raise Name_Error with Error ("non-existent source: " & Src);
-         when File =>
-            Copy_File;
-         when Directory =>
-            Copy_Dir;
-         when Softlink =>
-            if Options.Resolve_Links and then Canonizable (Src) then
-               Copy (Target (Src), Dst);
-            else
-               Copy_Link;
+      if Kind (Src) = Directory
+        or else (Options.Resolve_Links and then Target_Kind (Src) = Directory)
+      then
+         declare
+            Real_Src : constant Path := Canonical (Src);
+            Real_Dst : constant Path := Pseudocanonical (Dst);
+         begin
+            if Real_Dst = Real_Src
+              or else Ancestors (Real_Dst).Contains (Real_Src)
+            then
+               raise Use_Error with
+                 Error ("cannot copy a folder into itself: "
+                        & Src & " --> " & Dst);
             end if;
-         when Special =>
-            Copy_Special;
-      end case;
+         end;
+      end if;
 
-      Log ("Copy " & Src & P (Kind (Src)'Image)
-           & " --> "
-           & Dst & P (Kind (Dst)'Image) & " OK");
+      Copy_Item (Src, Dst);
    end Copy;
 
    ---------------------

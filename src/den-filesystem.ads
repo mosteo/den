@@ -50,14 +50,19 @@ package Den.Filesystem is
       Overwrite_Files      : Boolean := False; -- When dst is a file
       Merge_Dirs           : Boolean := False; -- When both src/dst are dirs
       Resolve_Links        : Boolean := False; -- Copy target instead of link
-      Preserve_Permissions : Boolean := True;  -- Ownership
+      Preserve_Permissions : Boolean := True;  -- Mode bits
       Preserve_Timestamps  : Boolean := False; -- Creation/modification time
    end record;
 
    procedure Copy (Src, Dst : Path;
                    Options  : Copy_Options := (others => <>));
-   --  Make a copy of a file/dir/link. For dirs, this acts as rsync when paths
-   --  end in '/' (this is also rclone behavior).
+   --  Make a copy of a file/dir/link. A file or link copied to a folder goes
+   --  inside it. The contents of a folder go into Dst, which must exist. With
+   --  Resolve_Links, what a link points to is copied as if it were at the link
+   --  and with its name, and a folder is created as Dst if needed; only links
+   --  that cannot be resolved are copied as links. Raises Use_Error rather than
+   --  overwriting a file with itself, copying a folder into itself, or
+   --  following links that lead back to a folder being copied.
 
    procedure Copy_Attributes (Src, Dst    : Path;
                               Permissions : Boolean;
