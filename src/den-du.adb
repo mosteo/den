@@ -1,5 +1,5 @@
-with Den.Iterators;
 with Den.OS;
+with Den.Walk;
 
 with GNAT.IO;
 
@@ -28,9 +28,10 @@ package body Den.Du is
    -- List --
    ----------
 
-   function List (Path     : Den.Path;
-                  Sort     : Sorting := Is_Larger'Access;
-                  Progress : access procedure (Exploring : String) := null)
+   function List (Path            : Den.Path;
+                  Sort            : Sorting := Is_Larger'Access;
+                  Progress        : access procedure (Exploring : String) := null;
+                  Skip_Unreadable : Boolean := False)
                   return Tree
    is
 
@@ -45,7 +46,9 @@ package body Den.Du is
          end if;
 
          return Result : Tree do
-            for Name of Den.Iterators.Iterate (Path) loop
+            for Name of Den.Walk.Ls
+              (Path, (Skip_Unreadable => Skip_Unreadable, others => <>))
+            loop
                declare
                   use Den.Operators;
                   Child         : constant Den.Path := Path / Name;

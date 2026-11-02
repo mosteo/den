@@ -8,6 +8,8 @@ with Den.Du;
 with Den.Filesystem;
 with Den.Walk;
 
+with GNAT.OS_Lib;
+
 procedure Den_Tests.Walk_Options is
 
    use Den;
@@ -246,9 +248,81 @@ procedure Den_Tests.Walk_Options is
       The_File : constant Path := Test_Dir / "file";
    begin
       Assert (Walk.Ls (The_File).Contains (The_File));
-      Assert (Walk.Ls (The_File, (Canonicalize => True))
+      Assert (Walk.Ls (The_File, (Canonicalize => True, others => <>))
               .Contains (Canonical (The_File)));
    end Check_Ls;
+
+   ----------------------
+   -- Check_Unreadable --
+   ----------------------
+
+   --  A directory that can't be read stops a walk, unless asked otherwise. The
+   --  results are checked after restoring it so nothing is left behind.
+
+   procedure Check_Unreadable is
+      package Du is new Den.Du;
+
+      Top    : constant Path := Test_Dir / "unreadable";
+      Locked : constant Path := Top / "locked";
+
+      Ls_Raised, Find_Raised, Du_Raised : Boolean := False;
+
+      Skip_Find : Walk.Items;
+      Skip_Ls   : Sorted_Paths;
+      Du_Items  : Natural := 0;
+   begin
+      if Dir_Separator /= '/' then
+         return; -- Read permissions work otherwise there
+      end if;
+
+      Create_Directory (Locked, (Create_Intermediate => True, others => <>));
+      Touch (Locked / "hidden");
+      Touch (Top / "visible");
+      GNAT.OS_Lib.Set_Non_Readable (Locked);
+
+      begin
+         Assert (Walk.Ls (Locked).Is_Empty);
+      exception
+         when Ada.IO_Exceptions.Use_Error =>
+            Ls_Raised := True;
+      end;
+
+      if not Ls_Raised then
+         GNAT.OS_Lib.Set_Readable (Locked);
+         Ada.Text_IO.Put_Line ("Skipping as permissions don't apply (root?)");
+         return;
+      end if;
+
+      begin
+         Assert (Walk.Find (Top).Is_Empty);
+      exception
+         when Ada.IO_Exceptions.Use_Error =>
+            Find_Raised := True;
+      end;
+
+      begin
+         Assert (Natural (Du.List (Top).Length) = 0);
+      exception
+         when Ada.IO_Exceptions.Use_Error =>
+            Du_Raised := True;
+      end;
+
+      Skip_Ls   := Walk.Ls (Locked, (Skip_Unreadable => True, others => <>));
+      Skip_Find := Walk.Find (Top, (Skip_Unreadable => True, others => <>));
+      Du_Items  := Natural (Du.List (Top, Skip_Unreadable => True).Length);
+
+      GNAT.OS_Lib.Set_Readable (Locked);
+
+      Assert (Find_Raised);
+      Assert (Du_Raised);
+      Assert (Skip_Ls.Is_Empty);
+      Assert (Has (Skip_Find, Locked));
+      Assert (Has (Skip_Find, Top / "visible"));
+      Assert (not Has (Skip_Find, Locked / "hidden"));
+      Assert (Du_Items = 1);
+
+      Delete_Tree (Top);
+   end Check_Unreadable;
 
    --------------------
    -- Check_Too_Long --
@@ -408,6 +482,7 @@ begin
    Check_Root;
    Check_From_Root;
    Check_Ls;
+   Check_Unreadable;
    Check_Too_Long;
 
    if Supported then

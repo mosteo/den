@@ -1,3 +1,5 @@
+with Ada.IO_Exceptions;
+
 with Den.Filesystem; use Den.Filesystem;
 with Den.Iterators;
 with Den.OS;
@@ -93,7 +95,10 @@ package body Den.Walk is
          --  entering a softlinked dir (the start of the walk, or any one with
          --  Enter_Softlinked_Dirs). Children are still reported below Base.
       begin
-         for Item of Ls (Listed, (Canonicalize => False)) loop
+         for Item of Ls (Listed,
+                         (Canonicalize    => False,
+                          Skip_Unreadable => Options.Skip_Unreadable))
+         loop
             if Stop then
                return;
             end if;
@@ -238,9 +243,16 @@ package body Den.Walk is
                Insert (This, This, Into => Result);
 
             when Directory =>
-               for Item of Iterators.Iterate (This) loop
-                  Insert (Item, This / Item, Into => Result);
-               end loop;
+               begin
+                  for Item of Iterators.Iterate (This) loop
+                     Insert (Item, This / Item, Into => Result);
+                  end loop;
+               exception
+                  when Ada.IO_Exceptions.Use_Error =>
+                     if not Options.Skip_Unreadable then
+                        raise;
+                     end if;
+               end;
          end case;
       end return;
    end Ls;

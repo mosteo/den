@@ -5,7 +5,9 @@ package Den.Walk is
    --  Walk directories with these subprograms
 
    type Ls_Options is record
-      Canonicalize : Boolean := False;
+      Canonicalize    : Boolean := False;
+      Skip_Unreadable : Boolean := False;
+      --  A directory that cannot be read gives no children instead of raising
    end record;
 
    function Ls (This    : Path;
@@ -73,6 +75,10 @@ package Den.Walk is
       --  that loops back to it, although that link is still visited.
       Visit_Softlinks       : Boolean := True;
       --  Whether Action will be called on softlinks. They may still be entered
+      Skip_Unreadable       : Boolean := False;
+      --  A directory that cannot be read is visited as usual, but it gives no
+      --  children, instead of raising. Nothing tells them apart from an empty
+      --  one, so this can miss things.
       Canonicalize          : Canonical_Parts := None;
       --  Note that All_Deduped requires storing all found canonical paths to
       --  avoid revisiting them through several converging softlinks, so it may
@@ -91,8 +97,8 @@ package Den.Walk is
    --  exists. If given a Filter, Action will be only called for those matching
    --  it. The order of visiting is alphabetical. "." and ".." are never
    --  visited. Complexity is O(n log n) due to the sorting of entries in
-   --  a directory. Raises Use_Error if a directory cannot be read, or on
-   --  reaching a path that is too long for the OS.
+   --  a directory. Raises Use_Error if a directory cannot be read, unless
+   --  Skip_Unreadable, or on reaching a path that is too long for the OS.
 
    package Item_Sets is new Ada.Containers.Indefinite_Ordered_Multisets (Item);
    --  Multiset as to preserve the semantics of All_With_Dupes
