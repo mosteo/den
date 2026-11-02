@@ -317,13 +317,16 @@ package body Den is
    -- Canonical --
    ---------------
 
-   function Canonical (This : Existing_Path) return Canonical_Path
-   is (if OS_Canonical (This) = "" or else
-          OS_Canonical (This) not in Canonical_Path
-       then raise Bad_Path with
-         "Cannot canonicalize: " & This
-         & " [os_canonical: " & OS_Canonical (This) & "]"
-       else OS_Canonical (This));
+   function Canonical (This : Existing_Path) return Canonical_Path is
+      Result : constant String := OS_Canonical (This);
+   begin
+      if Result = "" or else Result not in Canonical_Path then
+         raise Bad_Path with
+           "Cannot canonicalize: " & This & " [os_canonical: " & Result & "]";
+      end if;
+
+      return Result;
+   end Canonical;
 
    -----------------
    -- Canonizable --
@@ -341,9 +344,10 @@ package body Den is
    -- Eat_Dots --
    --------------
 
-   function Eat_Dots (This   :        Path;
-                      Parted : in out Path_Parts;
-                      I      : in out Integer)
+   function Eat_Dots (This        :        Path;
+                      Parted      : in out Path_Parts;
+                      I           : in out Integer;
+                      Drop_Excess :        Boolean := False)
                       return Boolean
    is
    begin
@@ -352,14 +356,22 @@ package body Den is
          return True;
       elsif Parted (I) = ".." then
          Parted.Delete (I);
-         if I = Parted.First_Index then
-            raise Bad_Path with
-              "Too many parents in path while normalizing: " & This;
-            --  At root, drop as if it where "."
+
+         --  There's nothing to go up from at the start of a relative path, or
+         --  after a root or drive
+
+         if I = Parted.First_Index
+           or else Prefix_Length (Parted (I - 1), On_Windows) > 0
+         then
+            if not Drop_Excess then
+               raise Bad_Path with
+                 "Too many parents in path while normalizing: " & This;
+            end if;
          else
             Parted.Delete (I - 1);
             I := I - 1;
          end if;
+
          return True;
       else
          return False;
@@ -461,6 +473,10 @@ package body Den is
             I := I + 1;
          end if;
       end loop;
+
+      if Parted.Is_Empty then
+         raise Bad_Path with "Nothing left after normalizing: " & This;
+      end if;
 
       return Parted.To_Path;
    end Normal;

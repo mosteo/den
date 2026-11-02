@@ -622,11 +622,14 @@ package body Den.Filesystem is
       end if;
 
       declare
+         Max_Hops : constant := 40; -- As in Linux, for following links
+         Hops     : Natural := 0;
+
          Parted : Path_Parts := Parts (Absolute (This));
          I      : Integer := Parted.First_Index;
       begin
          while I <= Parted.Last_Index loop
-            if Eat_Dots (This, Parted, I) then
+            if Eat_Dots (This, Parted, I, Drop_Excess => True) then
                null; -- Eat_Dots does what has to be done
             else
                declare
@@ -634,30 +637,26 @@ package body Den.Filesystem is
                   Head  : constant Absolute_Path := Phead.To_Path;
                   Ptail : constant Path_Parts    := Parted.From (I + 1);
                begin
-                  --  At this point Head is absnormal, though may be a softlink
-                  if Is_Softlink (Head) then
-                     if Is_Broken (Head) then
-                        if Can_Scrub (Target (Head)) then
-                           Parted :=
-                             Parts (Parent (Head)) -- Parent of broken link
-                             & Parts (Scrub (Target (Head))) -- Link target
-                             & Ptail; -- Remainder
-                        else
-                           --  We cannot replace the link with its target, as
-                           --  it is a bad path, so simply leave as is.
-                           I := I + 1;
-                        end if;
-                     elsif not Canonizable (Head) then
-                        --  Leave as is
-                        I := I + 1;
-                     else -- Valid link
-                        --  Substitute target plus tail
-                        Parted := Parts (Canonical (Head)) & Ptail;
-                        --  No need to go over parts guaranteed to be good
-                        I := Integer (Parts (Canonical (Head)).Length) + 1;
-                     end if;
+                  --  At this point Head is absnormal, though may be a softlink.
+                  --  We cannot replace a link by a target that is a bad path,
+                  --  nor keep on doing it for those whose target goes through
+                  --  themselves, so these are left as they are.
+                  if not Is_Softlink (Head) then
+                     I := I + 1;
+                  elsif Canonizable (Head) then
+                     --  Valid link: substitute target plus tail
+                     Parted := Parts (Canonical (Head)) & Ptail;
+                     --  No need to go over parts guaranteed to be good
+                     I := Integer (Parts (Canonical (Head)).Length) + 1;
+                  elsif Can_Scrub (Target (Head))
+                    and then Is_Broken (Head)
+                    and then Hops < Max_Hops
+                  then
+                     --  The target may be anywhere, so start over with it
+                     Hops   := Hops + 1;
+                     Parted := Parts (Absolute (Resolve (Head))) & Ptail;
+                     I      := Parted.First_Index;
                   else
-                     --  Just move on to the next bit
                      I := I + 1;
                   end if;
                end;

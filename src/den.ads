@@ -155,9 +155,10 @@ package Den with Preelaborate is
    --  May still return softlink if the softlink is unresolvable
 
    function Is_Hard (This : Path) return Boolean
-   is ((for all A of Ancestors (This) => Kind (A) = Directory)
+   is (Is_Normal (This)
+       and then (for all A of Ancestors (This) => Kind (A) = Directory)
        and then Kind (This) in Canonical_Kinds);
-   --  Note that a non-existing path may be hard
+   --  This exists, and neither it nor any of its ancestors is a softlink
 
    function Exists (This : Path; Resolve_Links : Boolean := False)
                     return Boolean
@@ -309,12 +310,14 @@ private
    --  The prefix, if any, and the names in This. A prefix that is a root always
    --  ends in a separator, and only contains native separators.
 
-   function Eat_Dots (This   :        Path;
-                      Parted : in out Path_Parts;
-                      I      : in out Integer)
+   function Eat_Dots (This        :        Path;
+                      Parted      : in out Path_Parts;
+                      I           : in out Integer;
+                      Drop_Excess :        Boolean := False)
                       return Boolean;
    --  Removes only "." and ".." at pos I. Return True if something removed,
-   --  False otherwise. May raise Bad_Path
+   --  False otherwise. A ".." with nothing to go up from raises Bad_Path,
+   --  unless Drop_Excess, in which case it is just removed.
 
    function Is_Softlink (This : Path) return Boolean;
    --  Always false in platforms without softlink support. True even for broken
