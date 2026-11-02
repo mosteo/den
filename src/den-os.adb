@@ -2,29 +2,7 @@ with Ada.IO_Exceptions; use Ada.IO_Exceptions;
 
 with C_Strings; use C_Strings;
 
-with System;
-
 package body Den.OS is
-
-   ------------------
-   -- C_File_Exists --
-   ------------------
-
-   function C_File_Exists (A : System.Address) return C.int
-      with Import, Convention => C, External_Name => "__gnat_file_exists";
-
-   -----------------
-   -- File_Exists --
-   -----------------
-
-   function File_Exists (Path : String) return Boolean is
-      C_Name : String (1 .. Path'Length + 1);
-      use type C.int;
-   begin
-      C_Name (1 .. Path'Length) := Path;
-      C_Name (C_Name'Last) := ASCII.NUL;
-      return C_File_Exists (C_Name (C_Name'First)'Address) = 1;
-   end File_Exists;
 
    ------------------
    -- C_Canonical --
@@ -35,12 +13,12 @@ package body Den.OS is
                          return C.int
       with Import, Convention => C;
 
-   -------------------
-   -- C_Is_Softlink --
-   -------------------
+   ------------
+   -- C_Kind --
+   ------------
 
-   function C_Is_Softlink (Path : Chars_Ptr)
-                           return C.int
+   function C_Kind (Path : Chars_Ptr)
+                    return C.int
       with Import, Convention => C;
 
    -------------------
@@ -70,6 +48,33 @@ package body Den.OS is
                            return C.int
       with Import, Convention => C;
 
+   -------------
+   -- Has_NUL --
+   -------------
+
+   function Has_NUL (Path : String) return Boolean
+   is (for some Char of Path => Char = ASCII.NUL);
+
+   ----------------
+   -- Check_Path --
+   ----------------
+
+   procedure Check_Path (Path : String) is
+   begin
+      if Has_NUL (Path) then
+         raise Bad_Path with "Path contains a NUL character: " & Path;
+      end if;
+   end Check_Path;
+
+   -------------
+   -- Kind_Of --
+   -------------
+
+   function Kind_Of (Path : String) return Kinds
+   is (if Has_NUL (Path)
+       then Nothing
+       else Kinds'Val (C_Kind (To_C (Path).To_Ptr)));
+
    ---------------
    -- Canonical --
    ---------------
@@ -79,6 +84,8 @@ package body Den.OS is
 
       Bufsize : Integer := 32768; -- Theoretically, this is Windows max
    begin
+      Check_Path (Input_Path);
+
       loop
          declare
             Cbuf : C_String := Buffer (Bufsize);
@@ -108,16 +115,6 @@ package body Den.OS is
    end Canonical;
 
    -----------------
-   -- Is_Softlink --
-   -----------------
-
-   function Is_Softlink (Path : String) return Boolean is
-      use type C.int;
-   begin
-      return C_Is_Softlink (To_C (Path).To_Ptr) /= 0;
-   end Is_Softlink;
-
-   -----------------
    -- Link_Target --
    -----------------
 
@@ -126,6 +123,8 @@ package body Den.OS is
 
       Bufsize : Integer := 1024; -- Enough almost always
    begin
+      Check_Path (Path);
+
       loop
          declare
             Cbuf : C_String := Buffer (Bufsize);
@@ -160,14 +159,18 @@ package body Den.OS is
 
    procedure Delete_Link (Path : String) is
       use type C.int;
-
-      Result : constant C.int := C_Delete_Link (To_C (Path).To_Ptr);
    begin
-      if Result /= 0 then
-         raise Use_Error with
-           "Cannot delete link: " & Path &
-           " (error: " & Result'Image & ")";
-      end if;
+      Check_Path (Path);
+
+      declare
+         Result : constant C.int := C_Delete_Link (To_C (Path).To_Ptr);
+      begin
+         if Result /= 0 then
+            raise Use_Error with
+              "Cannot delete link: " & Path &
+              " (error: " & Result'Image & ")";
+         end if;
+      end;
    end Delete_Link;
 
    -----------------
@@ -176,18 +179,23 @@ package body Den.OS is
 
    procedure Create_Link (Target, Name : String; Is_Dir : Boolean) is
       use C;
-
-      Result : constant C.int :=
-         C_Create_Link (Target => To_C (Target).To_Ptr,
-                        Name   => To_C (Name).To_Ptr,
-                        Is_Dir => Boolean'Pos (Is_Dir));
    begin
-      if Result /= 0 then
-         raise Use_Error with
-            Error ("cannot create softlink "
-                   & Name & " --> " & Target & P (Kind (Target)'Image)
-                   & " (error: " & Result'Image & ")");
-      end if;
+      Check_Path (Target);
+      Check_Path (Name);
+
+      declare
+         Result : constant C.int :=
+            C_Create_Link (Target => To_C (Target).To_Ptr,
+                           Name   => To_C (Name).To_Ptr,
+                           Is_Dir => Boolean'Pos (Is_Dir));
+      begin
+         if Result /= 0 then
+            raise Use_Error with
+               Error ("cannot create softlink "
+                      & Name & " --> " & Target & P (Kind (Target)'Image)
+                      & " (error: " & Result'Image & ")");
+         end if;
+      end;
    end Create_Link;
 
 end Den.OS;

@@ -12,6 +12,12 @@
 #include <windows.h>
 #include <winioctl.h>
 
+// These are missing from the headers of older compilers
+#define REPARSE_TAG_AF_UNIX 0x80000023
+#define REPARSE_TAG_LX_FIFO 0x80000024
+#define REPARSE_TAG_LX_CHR  0x80000025
+#define REPARSE_TAG_LX_BLK  0x80000026
+
 // The contents of a reparse point, which are not declared by the user-mode
 // Windows headers
 typedef struct {
@@ -218,27 +224,17 @@ static const WCHAR *regular_path (WCHAR *path, size_t *length)
 
 // Opens path only to query it, which requires no rights on it and doesn't clash
 // with anyone else using it. Returns an error code.
-static int open_for_query (const char *path, DWORD flags, HANDLE *file)
+static int open_for_query (const WCHAR *path, DWORD flags, HANDLE *file)
 {
-    int    error = 0;
-    WCHAR *wide  = to_wide (path, &error);
-
-    if (wide == NULL)
-        return error;
-
     *file = CreateFileW
-        (wide, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        (path, 0, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
          NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | flags, NULL);
 
-    if (*file == INVALID_HANDLE_VALUE)
-        error = last_error ();
-
-    free (wide);
-    return error;
+    return *file == INVALID_HANDLE_VALUE ? last_error () : 0;
 }
 
 // Reads the reparse point at path, without following it. Returns an error code.
-static int read_reparse_point (const char *path, reparse_buffer *buffer)
+static int read_reparse_point (const WCHAR *path, reparse_buffer *buffer)
 {
     DWORD  returned;
     HANDLE file;
@@ -305,7 +301,14 @@ int c_canonical (const char *inputPath, char *fullPath, size_t bufsiz)
     DWORD  needed;
     DWORD  length;
     WCHAR *path;
-    int    result = open_for_query (inputPath, 0, &file);
+    int    result = 0;
+    WCHAR *wide   = to_wide (inputPath, &result);
+
+    if (wide == NULL)
+        return result;
+
+    result = open_for_query (wide, 0, &file);
+    free (wide);
 
     if (result != 0)
         return result;
@@ -341,12 +344,75 @@ int c_canonical (const char *inputPath, char *fullPath, size_t bufsiz)
     return result;
 }
 
-int c_is_softlink (const char *path)
+// Whether Windows takes path for a device, which depends on its version. Only
+// the start of the result matters, and devices have short names.
+static int is_device (const WCHAR *path)
 {
-    reparse_buffer buffer;
+    WCHAR full[16];
+    DWORD length = GetFullPathNameW (path, 16, full, NULL);
 
-    return read_reparse_point (path, &buffer) == 0
-        && buffer.data.ReparseTag == IO_REPARSE_TAG_SYMLINK;
+    return length > 0 && length < 16 && wcsncmp (full, L"\\\\.\\", 4) == 0;
+}
+
+static int wide_kind (const WCHAR *path)
+{
+    DWORD attributes = GetFileAttributesW (path);
+
+    if (attributes == INVALID_FILE_ATTRIBUTES) {
+        // Files that are always in use, like the pagefile, can't be queried
+        if (GetLastError () == ERROR_SHARING_VIOLATION)
+            return DEN_FILE;
+
+        return is_device (path) ? DEN_SPECIAL : DEN_NOTHING;
+    }
+
+    if (attributes & FILE_ATTRIBUTE_REPARSE_POINT) {
+        reparse_buffer buffer;
+        int            error = read_reparse_point (path, &buffer);
+
+        if (error == 0) {
+            DWORD tag = buffer.data.ReparseTag;
+
+            if (tag == IO_REPARSE_TAG_SYMLINK
+                || tag == IO_REPARSE_TAG_MOUNT_POINT)
+            {
+                return DEN_SOFTLINK;
+            }
+
+            // Anything else that stands for another item must not be entered,
+            // and these are the Windows counterparts of Unix special files.
+            if (IsReparseTagNameSurrogate (tag) || tag == REPARSE_TAG_AF_UNIX
+                || tag == REPARSE_TAG_LX_FIFO || tag == REPARSE_TAG_LX_CHR
+                || tag == REPARSE_TAG_LX_BLK)
+            {
+                return DEN_SPECIAL;
+            }
+
+            // The remaining tags keep the nature of the item, like the
+            // placeholders of OneDrive or deduplicated files.
+        } else if (error != ERROR_NOT_A_REPARSE_POINT) {
+            return DEN_SPECIAL; // It could be a link, so it must not be entered
+        }
+    }
+
+    if (attributes & FILE_ATTRIBUTE_DIRECTORY)
+        return DEN_DIRECTORY;
+
+    return is_device (path) ? DEN_SPECIAL : DEN_FILE;
+}
+
+int c_kind (const char *path)
+{
+    int    error = 0;
+    WCHAR *wide  = to_wide (path, &error);
+    int    result;
+
+    if (wide == NULL)
+        return DEN_NOTHING;
+
+    result = wide_kind (wide);
+    free (wide);
+    return result;
 }
 
 int c_link_target (const char *path, char *buf, size_t bufsiz)
@@ -354,7 +420,14 @@ int c_link_target (const char *path, char *buf, size_t bufsiz)
     reparse_buffer buffer;
     const WCHAR   *target;
     size_t         length;
-    int            error = read_reparse_point (path, &buffer);
+    int            error = 0;
+    WCHAR         *wide  = to_wide (path, &error);
+
+    if (wide == NULL)
+        return error;
+
+    error = read_reparse_point (wide, &buffer);
+    free (wide);
 
     if (error != 0)
         return error;
@@ -380,7 +453,7 @@ int c_delete_link (const char *path)
 
     if (attributes == INVALID_FILE_ATTRIBUTES) {
         error = last_error ();
-    } else if (!(attributes & FILE_ATTRIBUTE_REPARSE_POINT)) {
+    } else if (wide_kind (wide) != DEN_SOFTLINK) {
         error = ERROR_NOT_A_REPARSE_POINT;
     } else if (!((attributes & FILE_ATTRIBUTE_DIRECTORY)
                  ? RemoveDirectoryW (wide) // Directory links are directories

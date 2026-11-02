@@ -19,30 +19,36 @@ static int last_error (void)
 
 int c_canonical (const char *inputPath, char *fullPath, size_t bufsiz)
 {
+    struct stat sb;
     char *resolved = realpath (inputPath, NULL);
+    int   result   = 0;
 
     if (resolved == NULL)
         return last_error ();
 
-    if (strlen (resolved) >= bufsiz) {
-        free (resolved);
-        return ERR_BUFFER_TOO_SMALL;
-    }
+    // Some systems don't fail when only the last component is missing
+    if (lstat (resolved, &sb) == -1)
+        result = last_error ();
+    else if (strlen (resolved) >= bufsiz)
+        result = ERR_BUFFER_TOO_SMALL;
+    else
+        strcpy (fullPath, resolved);
 
-    strcpy (fullPath, resolved);
     free (resolved);
-
-    return 0;
+    return result;
 }
 
-int c_is_softlink (const char *path)
+int c_kind (const char *path)
 {
     struct stat sb;
 
     if (lstat (path, &sb) == -1)
-        return 0;
+        return DEN_NOTHING;
 
-    return S_ISLNK (sb.st_mode);
+    return S_ISLNK (sb.st_mode) ? DEN_SOFTLINK
+        : S_ISDIR (sb.st_mode)  ? DEN_DIRECTORY
+        : S_ISREG (sb.st_mode)  ? DEN_FILE
+        : DEN_SPECIAL;
 }
 
 int c_link_target (const char *path, char *buf, size_t bufsiz)

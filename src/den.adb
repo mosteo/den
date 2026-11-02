@@ -7,8 +7,6 @@ with Den.OS;
 
 with GNAT.IO;
 
-with System;
-
 package body Den is
 
    --  package Dirs renames Ada.Directories;
@@ -153,10 +151,7 @@ package body Den is
    -----------------
 
    function Is_Softlink (This : Path) return Boolean
-   is
-   begin
-      return OS.Is_Softlink (This);
-   end Is_Softlink;
+   is (Kind (This) = Softlink);
 
    ---------------
    -- Can_Scrub --
@@ -229,44 +224,17 @@ package body Den is
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds
    is
-      -----------------
-      -- File_Exists --
-      -----------------
-      --  Original in a-direct.adb. We use this to avoid use of
-      --  non-preelaborable subprograms.
-      function File_Exists (Name : String) return Boolean is
-         function C_File_Exists (A : System.Address) return Integer;
-         pragma Import (C, C_File_Exists, "__gnat_file_exists");
-
-         C_Name : String (1 .. Name'Length + 1);
-
-      begin
-         C_Name (1 .. Name'Length) := Name;
-         C_Name (C_Name'Last) := ASCII.NUL;
-         return C_File_Exists (C_Name'Address) = 1;
-      end File_Exists;
-
-      package OS renames GNAT.OS_Lib;
-
+      Own_Kind : constant Kinds := OS.Kind_Of (This);
    begin
-      return
-        (if Resolve_Links then
-           (if Kind (This, Resolve_Links => False) /= Softlink then
-               Kind (This, Resolve_Links => False)
-            elsif OS_Canonical (This) /= "" then
-               Kind (OS_Canonical (This))
-            else
-               Nothing)
-         elsif Is_Softlink (This) then
-            Softlink
-         elsif not File_Exists (This) then
-            Nothing
-         elsif OS.Is_Directory (This) then
-            Directory
-         elsif OS.Is_Regular_File (This) then
-            File
-         else
-            Special);
+      if Resolve_Links and then Own_Kind = Softlink then
+         declare
+            Resolved : constant String := OS_Canonical (This);
+         begin
+            return (if Resolved = "" then Nothing else OS.Kind_Of (Resolved));
+         end;
+      else
+         return Own_Kind;
+      end if;
    end Kind;
 
    ----------

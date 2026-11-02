@@ -15,8 +15,10 @@
 // Returns an error code
 int c_canonical (const char *inputPath, char *fullPath, size_t bufsiz);
 
-// True or false (nonzero or zero)
-int c_is_softlink (const char *path);
+// What is at path, without following it. Failures of any kind mean there is
+// nothing reachable there. The values match those of Den.Kinds.
+enum { DEN_NOTHING, DEN_DIRECTORY, DEN_FILE, DEN_SOFTLINK, DEN_SPECIAL };
+int c_kind (const char *path);
 
 // Returns an error code. Fills buf with the target of the softlink at path
 int c_link_target (const char *path, char *buf, size_t bufsiz);

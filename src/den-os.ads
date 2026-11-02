@@ -2,15 +2,15 @@ private package Den.OS with Preelaborate is
 
    --  Imports for the common C functions in all supported OSes
 
-   function File_Exists (Path : String) return Boolean;
-   --  Returns True if Path exists in the filesystem
+   --  A path can't contain a NUL, which would cut it short for the OS, so such
+   --  paths designate nothing for Kind_Of, and raise Bad_Path for the others.
+
+   function Kind_Of (Path : String) return Kinds;
+   --  Says what is at Path, without following it if it is a softlink
 
    function Canonical (Input_Path : String) return String;
    --  Returns the canonical path for Input_Path
    --  Raises Use_Error if operation fails
-
-   function Is_Softlink (Path : String) return Boolean;
-   --  Returns True if Path is a softlink
 
    function Link_Target (Path : String) return String;
    --  Returns the target of the softlink at Path

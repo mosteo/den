@@ -3,6 +3,7 @@ pragma Alire_Test;
 with Ada.Text_IO;
 
 with Den;
+with Den.Filesystem;
 --  with Den.Informer;
 
 pragma Warnings (Off);
@@ -18,6 +19,19 @@ begin
    Assert (Kind (Cases) = Directory);
    Assert (Kind (Cases / "non-existent") = Nothing);
    Assert (Kind (Cases / "links" / "a") = File);
+
+   --  A path with an embedded NUL names nothing, and must not be cut short
+   Assert (Kind (Cases / "links" / ("a" & ASCII.NUL & "b")) = Nothing);
+   begin
+      Den.Filesystem.Link
+        ("kinds_nul" & ASCII.NUL & "link", "target",
+         Options => (Allow_Missing_Target => True, others => <>));
+      raise Program_Error with "Expected Bad_Path";
+   exception
+      when Bad_Path =>
+         null;
+   end;
+   Assert (Kind ("kinds_nul") = Nothing);
 
    --  Skip this test if softlinks are not supported
    if Kind ("canary") /= Softlink then
