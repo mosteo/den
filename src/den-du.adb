@@ -1,10 +1,9 @@
 with Den.Iterators;
+with Den.OS;
 
 with GNAT.IO;
 
 package body Den.Du is
-
-   package Adirs renames Ada.Directories;
 
    Current_Sorting : Sorting := Is_Larger'Access;
 
@@ -67,7 +66,7 @@ package body Den.Du is
                         Path          => Child,
                         Size          =>
                           (case Den.Kind (Child) is
-                              when File      => Adirs.Size (Child),
+                              when File      => Sizes (OS.File_Size (Child)),
                               when Softlink  =>
                                 Sizes (Den.Target_Length (Child)),
                               when others    => 0),
@@ -102,7 +101,7 @@ package body Den.Du is
                   Path          => Clean_Path,
                   Size          =>
                     (case Den.Kind (Clean_Path) is
-                        when File      => Adirs.Size (Clean_Path),
+                        when File      => Sizes (OS.File_Size (Clean_Path)),
                         when Softlink  =>
                           Sizes (Den.Target_Length (Clean_Path)),
                         when others    => 0),

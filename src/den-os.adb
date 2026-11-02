@@ -2,54 +2,82 @@ with Ada.IO_Exceptions; use Ada.IO_Exceptions;
 
 with C_Strings; use C_Strings;
 
+with System;
+
 package body Den.OS is
 
-   ------------------
-   -- C_Canonical --
-   ------------------
+   use type C.int;
+
+   --  Imports from denc.h
 
    function C_Canonical (Input_Path, Full_Path : Chars_Ptr;
-                         Bufsiz               : C.size_t)
+                         Bufsiz                : C.size_t)
                          return C.int
       with Import, Convention => C;
-
-   -----------------
-   -- C_Full_Path --
-   -----------------
 
    function C_Full_Path (Input_Path, Full_Path : Chars_Ptr;
-                         Bufsiz               : C.size_t)
+                         Bufsiz                : C.size_t)
                          return C.int
       with Import, Convention => C;
-
-   ------------
-   -- C_Kind --
-   ------------
 
    function C_Kind (Path : Chars_Ptr)
                     return C.int
       with Import, Convention => C;
 
-   -------------------
-   -- C_Link_Target --
-   -------------------
+   function C_File_Size (Path : Chars_Ptr)
+                         return Long_Long_Integer
+      with Import, Convention => C;
+
+   function C_Getcwd (Buffer : Chars_Ptr;
+                      Bufsiz : C.size_t)
+                      return C.int
+      with Import, Convention => C;
+
+   function C_Mkdir (Path : Chars_Ptr)
+                     return C.int
+      with Import, Convention => C;
+
+   function C_Rmdir (Path : Chars_Ptr)
+                     return C.int
+      with Import, Convention => C;
+
+   function C_Unlink (Path : Chars_Ptr)
+                      return C.int
+      with Import, Convention => C;
+
+   function C_Dir_Open (Path  : Chars_Ptr;
+                        Error : access C.int)
+                        return System.Address
+      with Import, Convention => C;
+
+   function C_Dir_Read (Dir    : System.Address;
+                        Buffer : Chars_Ptr;
+                        Bufsiz : C.size_t)
+                        return C.int
+      with Import, Convention => C;
+
+   procedure C_Dir_Close (Dir : System.Address)
+      with Import, Convention => C;
+
+   function C_Copy_File (Source, Target : Chars_Ptr)
+                         return C.int
+      with Import, Convention => C;
+
+   function C_Copy_Attributes (Source,
+                               Target      : Chars_Ptr;
+                               Permissions,
+                               Timestamps  : C.int)
+                               return C.int
+      with Import, Convention => C;
 
    function C_Link_Target (Path, Buffer : Chars_Ptr;
                            Bufsiz       : C.size_t)
                            return C.int
       with Import, Convention => C;
 
-   -------------------
-   -- C_Delete_Link --
-   -------------------
-
    function C_Delete_Link (Path : Chars_Ptr)
                            return C.int
       with Import, Convention => C;
-
-   -------------------
-   -- C_Create_Link --
-   -------------------
 
    function C_Create_Link (Target,
                            Name   : Chars_Ptr;
@@ -75,6 +103,55 @@ package body Den.OS is
       end if;
    end Check_Path;
 
+   -----------
+   -- Check --
+   -----------
+
+   procedure Check (Code : C.int; Action : String; Path : String) is
+   begin
+      if Code /= 0 then
+         raise Use_Error with
+           "Cannot " & Action & ": " & Path & " (error: " & Code'Image & ")";
+      end if;
+   end Check;
+
+   ------------
+   -- Filled --
+   ------------
+
+   --  Calls Fill with a growing buffer until it fits, and returns its contents
+
+   function Filled (Action : String;
+                    Path   : String;
+                    Size   : Positive;
+                    Fill   : not null access function (Buffer : Chars_Ptr;
+                                                       Bufsiz : C.size_t)
+                                                       return C.int)
+                    return String
+   is
+      Bufsize : Integer := Size;
+   begin
+      Check_Path (Path);
+
+      loop
+         declare
+            Cbuf : C_String := Buffer (Bufsize);
+            Code : constant C.int := Fill (Cbuf.To_Ptr, Cbuf.C_Size);
+         begin
+            if Code = 0 then
+               return Cbuf.To_Ada;
+            elsif Code /= -1 then
+               Check (Code, Action, Path);
+            elsif Integer'Last / 2 < Bufsize then
+               raise Use_Error with
+                 "Cannot " & Action & ": " & Path & " (buffer too small)";
+            else
+               Bufsize := Bufsize * 2; -- And try again
+            end if;
+         end;
+      end loop;
+   end Filled;
+
    -------------
    -- Kind_Of --
    -------------
@@ -89,38 +166,12 @@ package body Den.OS is
    ---------------
 
    function Canonical (Input_Path : String) return String is
-      use type C.int;
 
-      Bufsize : Integer := 32768; -- Theoretically, this is Windows max
+      function Fill (Buffer : Chars_Ptr; Bufsiz : C.size_t) return C.int
+      is (C_Canonical (To_C (Input_Path).To_Ptr, Buffer, Bufsiz));
+
    begin
-      Check_Path (Input_Path);
-
-      loop
-         declare
-            Cbuf : C_String := Buffer (Bufsize);
-            Code : constant C.int
-              := C_Canonical (To_C (Input_Path).To_Ptr,
-                              Cbuf.To_Ptr,
-                              Cbuf.C_Size);
-         begin
-            case Code is
-               when 0 =>
-                  return Cbuf.To_Ada;
-               when -1 =>
-                  if Integer'Last / 2 < Bufsize then
-                     raise Use_Error with
-                       "Buffer too small for canonical path: " & Input_Path;
-                  else
-                     Bufsize := Bufsize * 2;
-                  end if;
-                  --  And try again
-               when others =>
-                  raise Use_Error with
-                    "Cannot canonicalize path: " & Input_Path &
-                    " (error: " & Code'Image & ")";
-            end case;
-         end;
-      end loop;
+      return Filled ("canonicalize path", Input_Path, 32768, Fill'Access);
    end Canonical;
 
    ---------------
@@ -128,77 +179,169 @@ package body Den.OS is
    ---------------
 
    function Full_Path (Path : String) return String is
-      use type C.int;
 
-      Bufsize : Integer := 32768; -- Theoretically, this is Windows max
+      function Fill (Buffer : Chars_Ptr; Bufsiz : C.size_t) return C.int
+      is (C_Full_Path (To_C (Path).To_Ptr, Buffer, Bufsiz));
+
+   begin
+      return Filled ("get full path", Path, 32768, Fill'Access);
+   end Full_Path;
+
+   -----------------
+   -- Current_Dir --
+   -----------------
+
+   function Current_Dir return String is
+
+      function Fill (Buffer : Chars_Ptr; Bufsiz : C.size_t) return C.int
+      is (C_Getcwd (Buffer, Bufsiz));
+
+   begin
+      return Filled ("get current directory", "", 32768, Fill'Access);
+   end Current_Dir;
+
+   ---------------
+   -- File_Size --
+   ---------------
+
+   function File_Size (Path : String) return Long_Long_Integer is
    begin
       Check_Path (Path);
 
-      loop
-         declare
-            Cbuf : C_String := Buffer (Bufsize);
-            Code : constant C.int
-              := C_Full_Path (To_C (Path).To_Ptr,
-                              Cbuf.To_Ptr,
-                              Cbuf.C_Size);
-         begin
-            case Code is
-               when 0 =>
-                  return Cbuf.To_Ada;
-               when -1 =>
-                  if Integer'Last / 2 < Bufsize then
-                     raise Use_Error with
-                       "Buffer too small for full path: " & Path;
-                  else
-                     Bufsize := Bufsize * 2;
-                  end if;
-                  --  And try again
-               when others =>
-                  raise Use_Error with
-                    "Cannot get full path: " & Path &
-                    " (error: " & Code'Image & ")";
-            end case;
-         end;
-      end loop;
-   end Full_Path;
+      declare
+         Result : constant Long_Long_Integer :=
+                    C_File_Size (To_C (Path).To_Ptr);
+      begin
+         if Result < 0 then
+            Check (C.int (-Result), "get size of file", Path);
+         end if;
+
+         return Result;
+      end;
+   end File_Size;
+
+   ----------
+   -- List --
+   ----------
+
+   procedure List (Path   : String;
+                   Action : not null access procedure (Name : String))
+   is
+      use type System.Address;
+
+      Error : aliased C.int := 0;
+      Dir   : System.Address;
+      Cbuf  : C_String := Buffer (4096); -- Far over any limit on name lengths
+   begin
+      Check_Path (Path);
+
+      Dir := C_Dir_Open (To_C (Path).To_Ptr, Error'Access);
+
+      if Dir = System.Null_Address then
+         Check (Error, "list directory", Path);
+      end if;
+
+      begin
+         loop
+            Check (C_Dir_Read (Dir, Cbuf.To_Ptr, Cbuf.C_Size),
+                   "list directory", Path);
+
+            declare
+               Name : constant String := Cbuf.To_Ada;
+            begin
+               exit when Name = "";
+               Action (Name);
+            end;
+         end loop;
+      exception
+         when others =>
+            C_Dir_Close (Dir);
+            raise;
+      end;
+
+      C_Dir_Close (Dir);
+   end List;
+
+   ----------------------
+   -- Create_Directory --
+   ----------------------
+
+   procedure Create_Directory (Path : String) is
+   begin
+      Check_Path (Path);
+      Check (C_Mkdir (To_C (Path).To_Ptr), "create directory", Path);
+   end Create_Directory;
+
+   ----------------------
+   -- Remove_Directory --
+   ----------------------
+
+   procedure Remove_Directory (Path : String) is
+   begin
+      Check_Path (Path);
+      Check (C_Rmdir (To_C (Path).To_Ptr), "remove directory", Path);
+   end Remove_Directory;
+
+   -----------------
+   -- Delete_File --
+   -----------------
+
+   procedure Delete_File (Path : String) is
+   begin
+      Check_Path (Path);
+      Check (C_Unlink (To_C (Path).To_Ptr), "delete file", Path);
+   end Delete_File;
+
+   ---------------
+   -- Copy_File --
+   ---------------
+
+   procedure Copy_File (Source, Target : String) is
+   begin
+      Check_Path (Source);
+      Check_Path (Target);
+      Check (C_Copy_File (To_C (Source).To_Ptr, To_C (Target).To_Ptr),
+             "copy file", Source & " --> " & Target);
+   end Copy_File;
+
+   ---------------------
+   -- Copy_Attributes --
+   ---------------------
+
+   procedure Copy_Attributes (Source, Target : String;
+                              Permissions    : Boolean;
+                              Timestamps     : Boolean)
+   is
+   begin
+      Check_Path (Source);
+      Check_Path (Target);
+
+      declare
+         Code : constant C.int :=
+                  C_Copy_Attributes (To_C (Source).To_Ptr,
+                                     To_C (Target).To_Ptr,
+                                     Boolean'Pos (Permissions),
+                                     Boolean'Pos (Timestamps));
+      begin
+         if Code /= 0 then
+            raise Status_Error with
+              "Cannot copy attributes: " & Source & " --> " & Target
+              & " (error: " & Code'Image & ")";
+         end if;
+      end;
+   end Copy_Attributes;
 
    -----------------
    -- Link_Target --
    -----------------
 
    function Link_Target (Path : String) return String is
-      use type C.int;
 
-      Bufsize : Integer := 1024; -- Enough almost always
+      function Fill (Buffer : Chars_Ptr; Bufsiz : C.size_t) return C.int
+      is (C_Link_Target (To_C (Path).To_Ptr, Buffer, Bufsiz));
+
    begin
-      Check_Path (Path);
-
-      loop
-         declare
-            Cbuf : C_String := Buffer (Bufsize);
-            Code : constant C.int
-              := C_Link_Target (To_C (Path).To_Ptr,
-                                Cbuf.To_Ptr,
-                                Cbuf.C_Size);
-         begin
-            case Code is
-               when 0 =>
-                  return Cbuf.To_Ada;
-               when -1 =>
-                  if Integer'Last / 2 < Bufsize then
-                     raise Use_Error with
-                       "Buffer too small for link target: " & Path;
-                  else
-                     Bufsize := Bufsize * 2;
-                  end if;
-                  --  And try again
-               when others =>
-                  raise Use_Error with
-                    "Cannot get link target: " & Path &
-                    " (error: " & Code'Image & ")";
-            end case;
-         end;
-      end loop;
+      return Filled ("get link target", Path, 1024, Fill'Access);
    end Link_Target;
 
    -----------------
@@ -206,19 +349,9 @@ package body Den.OS is
    -----------------
 
    procedure Delete_Link (Path : String) is
-      use type C.int;
    begin
       Check_Path (Path);
-
-      declare
-         Result : constant C.int := C_Delete_Link (To_C (Path).To_Ptr);
-      begin
-         if Result /= 0 then
-            raise Use_Error with
-              "Cannot delete link: " & Path &
-              " (error: " & Result'Image & ")";
-         end if;
-      end;
+      Check (C_Delete_Link (To_C (Path).To_Ptr), "delete link", Path);
    end Delete_Link;
 
    -----------------
@@ -226,7 +359,6 @@ package body Den.OS is
    -----------------
 
    procedure Create_Link (Target, Name : String; Is_Dir : Boolean) is
-      use C;
    begin
       Check_Path (Target);
       Check_Path (Name);

@@ -18,6 +18,35 @@ private package Den.OS with Preelaborate is
    --  the paths that have those dependencies, which Windows alone has.
    --  Raises Use_Error if operation fails
 
+   function Current_Dir return String;
+   --  Raises Use_Error if operation fails
+
+   function File_Size (Path : String) return Long_Long_Integer;
+   --  Raises Use_Error if operation fails
+
+   procedure List (Path   : String;
+                   Action : not null access procedure (Name : String));
+   --  Calls Action with the name of every entry in the directory at Path,
+   --  including "." and "..". Raises Use_Error if operation fails
+
+   procedure Create_Directory (Path : String);
+   --  Raises Use_Error if operation fails
+
+   procedure Remove_Directory (Path : String);
+   --  Raises Use_Error if operation fails
+
+   procedure Delete_File (Path : String);
+   --  Raises Use_Error if operation fails
+
+   procedure Copy_File (Source, Target : String);
+   --  Only on Windows. Elsewhere, the runtime does this as well without limits.
+   --  Copies just the contents. Raises Use_Error if operation fails
+
+   procedure Copy_Attributes (Source, Target : String;
+                              Permissions    : Boolean;
+                              Timestamps     : Boolean);
+   --  Only on Windows, for the same reason. Raises Status_Error if it fails
+
    function Link_Target (Path : String) return String;
    --  Returns the target of the softlink at Path
    --  Raises Use_Error if operation fails

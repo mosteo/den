@@ -99,9 +99,9 @@ static int decode_character (const unsigned char **in)
     return result;
 }
 
-// Returns the wide version of path, to be freed by the caller, or NULL if it
-// cannot be converted, with the reason in error
-static WCHAR *to_wide (const char *path, int *error)
+// Returns the wide version of path exactly as given, to be freed by the caller,
+// or NULL if it cannot be converted, with the reason in error
+static WCHAR *decode_path (const char *path, int *error)
 {
     // No sequence of bytes takes less bytes than the wide characters it needs
     WCHAR *result = malloc ((strlen (path) + 1) * sizeof (WCHAR));
@@ -132,6 +132,62 @@ static WCHAR *to_wide (const char *path, int *error)
     }
 
     *out = 0;
+    return result;
+}
+
+// Most of the API is limited to MAX_PATH characters, and to 248 for creating
+// directories, unless paths are given in the verbatim form.
+#define LONGEST_REGULAR_PATH 248
+
+// Returns the wide version of path to use with the OS, to be freed by the caller,
+// or NULL if it cannot be converted, with the reason in error. Long paths are
+// converted to the verbatim form, which requires them to be absolute and to use
+// only backslashes. Only the full path says whether it is long.
+static WCHAR *to_wide (const char *path, int *error)
+{
+    WCHAR *wide = decode_path (path, error);
+    WCHAR *full;
+    WCHAR *result;
+    DWORD  needed;
+
+    if (wide == NULL)
+        return NULL;
+
+    // These are already in their final form
+    if (wcsncmp (wide, L"\\\\?\\", 4) == 0
+        || wcsncmp (wide, L"\\\\.\\", 4) == 0)
+    {
+        return wide;
+    }
+
+    // The size needed including terminator, or 0 for error, which the call this
+    // path is meant for will report as well
+    needed = GetFullPathNameW (wide, 0, NULL, NULL);
+
+    if (needed <= LONGEST_REGULAR_PATH)
+        return wide;
+
+    full   = malloc (needed * sizeof (WCHAR));
+    result = malloc ((needed + 8) * sizeof (WCHAR)); // Room for the prefix
+
+    if (full == NULL || result == NULL) {
+        *error = ERROR_NOT_ENOUGH_MEMORY;
+        free (result);
+        result = NULL;
+    } else if (GetFullPathNameW (wide, needed, full, NULL) == 0) {
+        *error = last_error ();
+        free (result);
+        result = NULL;
+    } else if (full[0] == L'\\' && full[1] == L'\\') {
+        wcscpy (result, L"\\\\?\\UNC\\");
+        wcscat (result, full + 2);
+    } else {
+        wcscpy (result, L"\\\\?\\");
+        wcscat (result, full);
+    }
+
+    free (full);
+    free (wide);
     return result;
 }
 
@@ -347,7 +403,7 @@ int c_canonical (const char *inputPath, char *fullPath, size_t bufsiz)
 int c_full_path (const char *inputPath, char *fullPath, size_t bufsiz)
 {
     int    error = 0;
-    WCHAR *wide  = to_wide (inputPath, &error);
+    WCHAR *wide  = decode_path (inputPath, &error);
     WCHAR *full  = NULL;
     DWORD  needed;
     DWORD  length;
@@ -451,6 +507,325 @@ int c_kind (const char *path)
     return result;
 }
 
+long long c_file_size (const char *path)
+{
+    int    error = 0;
+    WCHAR *wide  = to_wide (path, &error);
+    long long result;
+    WIN32_FILE_ATTRIBUTE_DATA data;
+
+    if (wide == NULL)
+        return -error;
+
+    if (GetFileAttributesExW (wide, GetFileExInfoStandard, &data))
+        result = ((long long) data.nFileSizeHigh << 32) | data.nFileSizeLow;
+    else
+        result = -last_error ();
+
+    free (wide);
+    return result;
+}
+
+int c_getcwd (char *buf, size_t bufsiz)
+{
+    int    result = 0;
+    DWORD  needed = GetCurrentDirectoryW (0, NULL); // Including terminator
+    WCHAR *path   = needed == 0 ? NULL : malloc (needed * sizeof (WCHAR));
+
+    if (needed == 0) {
+        result = last_error ();
+    } else if (path == NULL) {
+        result = ERROR_NOT_ENOUGH_MEMORY;
+    } else {
+        DWORD length = GetCurrentDirectoryW (needed, path);
+
+        if (length == 0) {
+            result = last_error ();
+        } else if (length >= needed) {
+            result = ERR_BUFFER_TOO_SMALL; // It has changed in the meantime
+        } else {
+            size_t       regular_length = length;
+            const WCHAR *regular = regular_path (path, &regular_length);
+
+            result = from_wide (regular, regular_length, buf, bufsiz);
+        }
+    }
+
+    free (path);
+    return result;
+}
+
+int c_mkdir (const char *path)
+{
+    int    error = 0;
+    WCHAR *wide  = to_wide (path, &error);
+
+    if (wide == NULL)
+        return error;
+
+    if (!CreateDirectoryW (wide, NULL))
+        error = last_error ();
+
+    free (wide);
+    return error;
+}
+
+// Calls remove for path, which is either RemoveDirectoryW or DeleteFileW. Unlike
+// other systems, Windows refuses to remove read-only items, so that attribute
+// has to go first in that case. Returns an error code.
+static int remove_item (const WCHAR *path, BOOL (WINAPI *remove) (LPCWSTR))
+{
+    DWORD attributes;
+    int   error;
+
+    if (remove (path))
+        return 0;
+
+    error      = last_error ();
+    attributes = GetFileAttributesW (path);
+
+    if (error == ERROR_ACCESS_DENIED
+        && attributes != INVALID_FILE_ATTRIBUTES
+        && (attributes & FILE_ATTRIBUTE_READONLY)
+        && SetFileAttributesW (path, attributes & ~FILE_ATTRIBUTE_READONLY))
+    {
+        return remove (path) ? 0 : last_error ();
+    }
+
+    return error;
+}
+
+int c_rmdir (const char *path)
+{
+    int    error = 0;
+    WCHAR *wide  = to_wide (path, &error);
+
+    if (wide == NULL)
+        return error;
+
+    error = remove_item (wide, RemoveDirectoryW);
+    free (wide);
+    return error;
+}
+
+int c_unlink (const char *path)
+{
+    int    error = 0;
+    WCHAR *wide  = to_wide (path, &error);
+
+    if (wide == NULL)
+        return error;
+
+    error = remove_item (wide, DeleteFileW);
+    free (wide);
+    return error;
+}
+
+// The state of a directory listing. The first entry comes along with the search
+// handle, which is invalid for an empty search, only possible on an empty drive.
+typedef struct {
+    HANDLE           find;
+    WIN32_FIND_DATAW data;
+    int              first;
+} dir_listing;
+
+void *c_dir_open (const char *path, int *error)
+{
+    size_t       length  = strlen (path);
+    char        *pattern = malloc (length + 3);
+    WCHAR       *wide;
+    dir_listing *dir;
+
+    if (pattern == NULL) {
+        *error = ERROR_NOT_ENOUGH_MEMORY;
+        return NULL;
+    }
+
+    // Only a separator is needed, unless there's already one or it's just C:
+    strcpy (pattern, path);
+    if (length > 0 && path[length - 1] != '\\' && path[length - 1] != '/'
+        && !(length == 2 && path[1] == ':'))
+    {
+        strcat (pattern, "\\");
+    }
+    strcat (pattern, "*");
+
+    wide = to_wide (pattern, error);
+    free (pattern);
+
+    if (wide == NULL)
+        return NULL;
+
+    dir = malloc (sizeof (*dir));
+
+    if (dir == NULL) {
+        *error = ERROR_NOT_ENOUGH_MEMORY;
+    } else {
+        dir->first = 1;
+        dir->find  = FindFirstFileW (wide, &dir->data);
+
+        if (dir->find == INVALID_HANDLE_VALUE
+            && GetLastError () != ERROR_FILE_NOT_FOUND)
+        {
+            *error = last_error ();
+            free (dir);
+            dir = NULL;
+        }
+    }
+
+    free (wide);
+    return dir;
+}
+
+int c_dir_read (void *handle, char *buf, size_t bufsiz)
+{
+    dir_listing *dir = handle;
+
+    if (dir->find == INVALID_HANDLE_VALUE) {
+        buf[0] = '\0';
+        return 0;
+    }
+
+    if (dir->first) {
+        dir->first = 0;
+    } else if (!FindNextFileW (dir->find, &dir->data)) {
+        if (GetLastError () != ERROR_NO_MORE_FILES)
+            return last_error ();
+
+        buf[0] = '\0';
+        return 0;
+    }
+
+    return from_wide (dir->data.cFileName, wcslen (dir->data.cFileName),
+                      buf, bufsiz);
+}
+
+void c_dir_close (void *handle)
+{
+    dir_listing *dir = handle;
+
+    if (dir->find != INVALID_HANDLE_VALUE)
+        FindClose (dir->find);
+
+    free (dir);
+}
+
+// A plain copy, as CopyFileW would also bring attributes that were not requested
+int c_copy_file (const char *source, const char *target)
+{
+    int    error       = 0;
+    WCHAR *wide_source = to_wide (source, &error);
+    WCHAR *wide_target = wide_source == NULL ? NULL : to_wide (target, &error);
+    HANDLE from;
+    HANDLE to;
+    char   buffer[65536];
+    DWORD  read;
+    DWORD  written;
+
+    if (wide_target == NULL) {
+        free (wide_source);
+        return error;
+    }
+
+    from = CreateFileW (wide_source, GENERIC_READ,
+                        FILE_SHARE_READ | FILE_SHARE_WRITE,
+                        NULL, OPEN_EXISTING, 0, NULL);
+
+    if (from == INVALID_HANDLE_VALUE) {
+        error = last_error ();
+    } else {
+        to = CreateFileW (wide_target, GENERIC_WRITE, 0,
+                          NULL, CREATE_ALWAYS, 0, NULL);
+
+        if (to == INVALID_HANDLE_VALUE) {
+            error = last_error ();
+        } else {
+            while (error == 0) {
+                if (!ReadFile (from, buffer, sizeof (buffer), &read, NULL)
+                    || (read > 0
+                        && !WriteFile (to, buffer, read, &written, NULL)))
+                {
+                    error = last_error ();
+                } else if (read == 0) {
+                    break;
+                }
+            }
+
+            CloseHandle (to);
+
+            if (error != 0) // Don't leave half a file behind
+                DeleteFileW (wide_target);
+        }
+
+        CloseHandle (from);
+    }
+
+    free (wide_source);
+    free (wide_target);
+    return error;
+}
+
+// Copies the last access and last write times from one open item to another
+static int copy_times (const WCHAR *source, const WCHAR *target)
+{
+    FILETIME accessed;
+    FILETIME modified;
+    HANDLE   from;
+    HANDLE   to;
+    int      error = open_for_query (source, 0, &from);
+
+    if (error != 0)
+        return error;
+
+    if (!GetFileTime (from, NULL, &accessed, &modified)) {
+        error = last_error ();
+    } else {
+        // Backup semantics are needed to open directories
+        to = CreateFileW (target, FILE_WRITE_ATTRIBUTES,
+                          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                          NULL, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, NULL);
+
+        if (to == INVALID_HANDLE_VALUE) {
+            error = last_error ();
+        } else {
+            if (!SetFileTime (to, NULL, &accessed, &modified))
+                error = last_error ();
+
+            CloseHandle (to);
+        }
+    }
+
+    CloseHandle (from);
+    return error;
+}
+
+int c_copy_attributes (const char *source, const char *target,
+                       int permissions, int timestamps)
+{
+    int    error       = 0;
+    WCHAR *wide_source = to_wide (source, &error);
+    WCHAR *wide_target = wide_source == NULL ? NULL : to_wide (target, &error);
+
+    if (wide_target != NULL) {
+        if (timestamps)
+            error = copy_times (wide_source, wide_target);
+
+        if (error == 0 && permissions) {
+            DWORD attributes = GetFileAttributesW (wide_source);
+
+            if (attributes == INVALID_FILE_ATTRIBUTES
+                || !SetFileAttributesW (wide_target, attributes))
+            {
+                error = last_error ();
+            }
+        }
+    }
+
+    free (wide_source);
+    free (wide_target);
+    return error;
+}
+
 int c_link_target (const char *path, char *buf, size_t bufsiz)
 {
     reparse_buffer buffer;
@@ -491,11 +866,10 @@ int c_delete_link (const char *path)
         error = last_error ();
     } else if (wide_kind (wide) != DEN_SOFTLINK) {
         error = ERROR_NOT_A_REPARSE_POINT;
-    } else if (!((attributes & FILE_ATTRIBUTE_DIRECTORY)
-                 ? RemoveDirectoryW (wide) // Directory links are directories
-                 : DeleteFileW (wide)))
-    {
-        error = last_error ();
+    } else {
+        // Directory links are directories
+        error = remove_item (wide, (attributes & FILE_ATTRIBUTE_DIRECTORY)
+                                   ? RemoveDirectoryW : DeleteFileW);
     }
 
     free (wide);
@@ -506,7 +880,7 @@ int c_create_link (const char *target, const char *name, int is_dir)
 {
     int    error       = 0;
     DWORD  flags       = is_dir ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0;
-    WCHAR *wide_target = to_wide (target, &error);
+    WCHAR *wide_target = decode_path (target, &error); // Stored as given
     WCHAR *wide_name   = wide_target == NULL ? NULL : to_wide (name, &error);
 
     if (wide_name != NULL) {

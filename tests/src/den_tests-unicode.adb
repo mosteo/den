@@ -158,8 +158,17 @@ procedure Den_Tests.Unicode is
       Name : constant String := Character'Val (16#FF#) & "x";
       Dir  : constant Path := Test_Dir / Name;
    begin
+      --  Windows names are UTF-16, so these cannot name anything there
+
       if Dir_Separator /= '/' then
-         return;
+         Assert (Kind (Dir) = Nothing);
+         begin
+            Create_Directory (Dir);
+            raise Program_Error with "Created an impossible name";
+         exception
+            when Ada.IO_Exceptions.Use_Error =>
+               return;
+         end;
       end if;
 
       begin
@@ -176,6 +185,32 @@ procedure Den_Tests.Unicode is
 
       Delete_Tree (Dir);
    end Check_Invalid_UTF8;
+
+   ------------------------------
+   -- Check_Unpaired_Surrogate --
+   ------------------------------
+
+   --  NTFS allows these in names, and they must round-trip like any other
+
+   procedure Check_Unpaired_Surrogate is
+      Name : constant String :=
+               Character'Val (16#ED#)
+               & Character'Val (16#A0#)
+               & Character'Val (16#80#)
+               & "x";
+      Dir  : constant Path := Test_Dir / Name;
+   begin
+      if Dir_Separator /= '\' then
+         return;
+      end if;
+
+      Create_Directory (Dir);
+      Assert (Kind (Dir) = Directory);
+      Assert (Listed (Test_Dir, Name));
+      Assert (Den.Name (Canonical (Dir)) = Name);
+      Delete_Tree (Dir);
+      Assert (Kind (Dir) = Nothing);
+   end Check_Unpaired_Surrogate;
 
    ----------------------
    -- Check_Magic_Link --
@@ -217,6 +252,7 @@ begin
 
    Check_Composed_Name;
    Check_Invalid_UTF8;
+   Check_Unpaired_Surrogate;
    Check_Magic_Link;
 
    Delete_Tree (Test_Dir);

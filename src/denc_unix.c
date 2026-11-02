@@ -5,6 +5,7 @@
 
 #include "denc.h"
 
+#include <dirent.h>
 #include <errno.h>
 #include <stdlib.h>
 #include <string.h>
@@ -58,6 +59,95 @@ int c_kind (const char *path)
         : S_ISDIR (sb.st_mode)  ? DEN_DIRECTORY
         : S_ISREG (sb.st_mode)  ? DEN_FILE
         : DEN_SPECIAL;
+}
+
+long long c_file_size (const char *path)
+{
+    struct stat sb;
+
+    if (lstat (path, &sb) == -1)
+        return -last_error ();
+
+    return sb.st_size;
+}
+
+int c_getcwd (char *buf, size_t bufsiz)
+{
+    if (getcwd (buf, bufsiz) != NULL)
+        return 0;
+
+    return errno == ERANGE ? ERR_BUFFER_TOO_SMALL : last_error ();
+}
+
+int c_mkdir (const char *path)
+{
+    return mkdir (path, 0777) == 0 ? 0 : last_error ();
+}
+
+int c_rmdir (const char *path)
+{
+    return rmdir (path) == 0 ? 0 : last_error ();
+}
+
+int c_unlink (const char *path)
+{
+    return unlink (path) == 0 ? 0 : last_error ();
+}
+
+void *c_dir_open (const char *path, int *error)
+{
+    DIR *dir = opendir (path);
+
+    if (dir == NULL)
+        *error = last_error ();
+
+    return dir;
+}
+
+int c_dir_read (void *dir, char *buf, size_t bufsiz)
+{
+    struct dirent *entry;
+
+    errno = 0; // The only way of telling the end from an error
+    entry = readdir ((DIR *) dir);
+
+    if (entry == NULL) {
+        if (errno != 0)
+            return last_error ();
+
+        buf[0] = '\0';
+        return 0;
+    }
+
+    if (strlen (entry->d_name) >= bufsiz)
+        return ERR_BUFFER_TOO_SMALL;
+
+    strcpy (buf, entry->d_name);
+    return 0;
+}
+
+void c_dir_close (void *dir)
+{
+    closedir ((DIR *) dir);
+}
+
+int c_copy_file (const char *source, const char *target)
+{
+    (void) source;
+    (void) target;
+
+    return ENOTSUP;
+}
+
+int c_copy_attributes (const char *source, const char *target,
+                       int permissions, int timestamps)
+{
+    (void) source;
+    (void) target;
+    (void) permissions;
+    (void) timestamps;
+
+    return ENOTSUP;
 }
 
 int c_link_target (const char *path, char *buf, size_t bufsiz)

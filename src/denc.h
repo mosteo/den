@@ -25,6 +25,35 @@ int c_full_path (const char *inputPath, char *fullPath, size_t bufsiz);
 enum { DEN_NOTHING, DEN_DIRECTORY, DEN_FILE, DEN_SOFTLINK, DEN_SPECIAL };
 int c_kind (const char *path);
 
+// Returns the size of the file at path, or a negated error code
+long long c_file_size (const char *path);
+
+// Returns an error code. Fills buf with the current directory
+int c_getcwd (char *buf, size_t bufsiz);
+
+// Returns an error code
+int c_mkdir (const char *path);
+
+// Returns an error code. Read-only directories can be removed on all platforms.
+int c_rmdir (const char *path);
+
+// Returns an error code. Read-only files can be deleted on all platforms.
+int c_unlink (const char *path);
+
+// Directory listing. Open returns NULL on error, with its code stored in error.
+// Read returns an error code, and fills buf with the next name, which is empty
+// when there are no more. All entries are returned, including "." and "..".
+void *c_dir_open (const char *path, int *error);
+int c_dir_read (void *dir, char *buf, size_t bufsiz);
+void c_dir_close (void *dir);
+
+// Return an error code. These only apply to Windows, where the runtime cannot
+// deal with long paths, and elsewhere they just fail. The copy doesn't preserve
+// attributes, which is what the other subprogram does, as requested.
+int c_copy_file (const char *source, const char *target);
+int c_copy_attributes (const char *source, const char *target,
+                       int permissions, int timestamps);
+
 // Returns an error code. Fills buf with the target of the softlink at path
 int c_link_target (const char *path, char *buf, size_t bufsiz);
 

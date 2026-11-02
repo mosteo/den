@@ -57,7 +57,13 @@ package body Den.Filesystem is
       begin
          case Kind (Dst) is
             when Nothing =>
-               Dirs.Copy_File (Src, Dst);
+               --  The runtime can't deal with long paths on Windows
+               if On_Windows then
+                  OS.Copy_File (Src, Dst);
+               else
+                  Dirs.Copy_File (Src, Dst);
+               end if;
+
                Copy_Attributes (Src, Dst,
                                 Timestamps  => Options.Preserve_Timestamps,
                                 Permissions => Options.Preserve_Permissions);
@@ -65,7 +71,7 @@ package body Den.Filesystem is
                Copy (Src, Dst / Name (Src), Options);
             when File =>
                if Options.Overwrite_Files then
-                  Dirs.Delete_File (Dst);
+                  OS.Delete_File (Dst);
                   Copy_File;
                else
                   raise Use_Error with
@@ -111,7 +117,7 @@ package body Den.Filesystem is
                                                   & (Src / Item));
                when Directory =>
                   if Kind (Dst / Item) = Nothing then
-                     Dirs.Create_Directory (Dst / Item);
+                     OS.Create_Directory (Dst / Item);
                   end if;
                   Copy (Src / Item, Dst / Item);
 
@@ -141,7 +147,7 @@ package body Den.Filesystem is
                return;
             when File =>
                if Options.Overwrite_Files then
-                  Dirs.Delete_File (Dst);
+                  OS.Delete_File (Dst);
                   --  Copy done below
                else
                   raise Use_Error with
@@ -210,6 +216,12 @@ package body Den.Filesystem is
          return;
       end if;
 
+      --  The runtime can't deal with long paths on Windows
+      if On_Windows then
+         OS.Copy_Attributes (Src, Dst, Permissions, Timestamps);
+         return;
+      end if;
+
       OS_Lib.Copy_File_Attributes
         (From             => Src,
          To               => Dst,
@@ -239,6 +251,23 @@ package body Den.Filesystem is
      (Target           : Path;
       Options          : Create_Directory_Options := (others => <>))
    is
+
+      -----------------
+      -- Create_Path --
+      -----------------
+
+      procedure Create_Path (This : Path) is
+      begin
+         if Has_Parent (This) and then Kind (Parent (This)) = Nothing then
+            Create_Path (Parent (This));
+         end if;
+
+         --  It may exist by now, if it goes through a ".."
+         if Kind (This) = Nothing then
+            OS.Create_Directory (This);
+         end if;
+      end Create_Path;
+
    begin
       case Target_Kind (Target) is
          when Directory =>
@@ -250,9 +279,9 @@ package body Den.Filesystem is
             end if;
          when Nothing =>
             if Options.Create_Intermediate then
-               Dirs.Create_Path (Target);
+               Create_Path (Target);
             else
-               Dirs.Create_Directory (Target);
+               OS.Create_Directory (Target);
             end if;
          when others =>
             raise Use_Error
@@ -267,7 +296,7 @@ package body Den.Filesystem is
    -----------------
 
    function Current_Dir return Path
-   is (Dirs.Current_Directory);
+   is (Scrub (OS.Current_Dir));
 
    ----------------------
    -- Delete_Directory --
@@ -309,7 +338,7 @@ package body Den.Filesystem is
             for Item of Iterators.Iterate (This) loop
                Delete_Directory (This / Item, Options);
             end loop;
-            Dirs.Delete_Directory (This); -- Should be empty now
+            OS.Remove_Directory (This); -- Should be empty now
          when File | Softlink =>
             Delete_File (This, Options.Delete_Files);
          when others =>
@@ -465,7 +494,7 @@ package body Den.Filesystem is
                  Error ("target is directory, use Delete_Directory: " & This);
             end if;
          when File =>
-            Dirs.Delete_File (This);
+            OS.Delete_File (This);
          when Softlink =>
             case Options.Delete_Softlinks is
                when Fail =>

@@ -5,7 +5,9 @@ with AAA.Strings;
 with Ada.Environment_Variables;
 with Ada.Text_IO;
 
+with Den.Du;
 with Den.Filesystem;
+with Den.Iterators;
 with Den.Walk;
 
 with GNAT.OS_Lib;
@@ -202,6 +204,126 @@ procedure Den_Tests.Windows is
       Assert (not Walk.Ls (Share).Is_Empty);
    end Check_UNC;
 
+   ----------------------
+   -- Check_Long_Paths --
+   ----------------------
+
+   --  Paths over the limit of 260 characters of the Windows API without the
+   --  verbatim prefix, which works in every operation and with either separator
+
+   procedure Check_Long_Paths (Top : Path) is
+      use AAA.Strings;
+
+      function Deep (Levels : Positive) return Path
+      is (if Levels = 1
+          then Top / "a_quite_long_folder_name_01"
+          else Deep (Levels - 1) / "a_quite_long_folder_name_01");
+
+      Dir  : constant Path := Deep (12);
+      File : constant Path := Dir / "file";
+
+      Slashed : constant String := Replace (File, "\", "/");
+
+      package Du is new Den.Du;
+      use type Du.Sizes;
+   begin
+      Assert (File'Length > 300);
+
+      Create_Directory (Dir, (Create_Intermediate => True, others => <>));
+      Assert (Kind (Dir) = Directory);
+
+      --  The source is short, as test files are created by the runtime
+
+      declare
+         F : Ada.Text_IO.File_Type;
+      begin
+         Ada.Text_IO.Create (F, Ada.Text_IO.Out_File, "short_file");
+         Ada.Text_IO.Put_Line (F, "contents");
+         Ada.Text_IO.Close (F);
+      end;
+
+      Copy ("short_file", File);
+      Assert (Kind (File) = Den.File);
+      Assert (Kind (Slashed) = Den.File);
+      Copy (File, Dir / "copied");
+      Assert (Kind (Dir / "copied") = Den.File);
+      Copy (Dir / "copied", "short_back");
+      Assert (Kind ("short_back") = Den.File);
+
+      Assert (Canonical (File) = Canonical (Slashed));
+      Assert (Name (Canonical (File)) = "file");
+
+      Assert (Natural (Walk.Ls (Dir).Length) = 2);
+      Assert (Walk.Ls (Dir).Contains ("file"));
+      Assert (Natural (Walk.Find (Dir).Length) = 2);
+
+      declare
+         Seen : Natural := 0;
+      begin
+         for Item of Iterators.Iterate (Dir) loop
+            Seen := Seen + 1;
+         end loop;
+         Assert (Seen = 2);
+      end;
+
+      declare
+         Sizes : constant Du.Tree := Du.List (Dir);
+      begin
+         Assert (Sizes.First_Element.Tree_Size > 0);
+      end;
+
+      Delete_File (Dir / "copied");
+      Assert (Kind (Dir / "copied") = Nothing);
+
+      Delete_Tree (Top);
+      Assert (Kind (Top) = Nothing);
+
+      Delete_File ("short_file");
+      Delete_File ("short_back");
+   end Check_Long_Paths;
+
+   ---------------------
+   -- Check_Long_Link --
+   ---------------------
+
+   --  A link in a long path, which works as in any other
+
+   procedure Check_Long_Link (Top : Path) is
+      function Deep (Levels : Positive) return Path
+      is (if Levels = 1
+          then Top / "a_quite_long_folder_name_01"
+          else Deep (Levels - 1) / "a_quite_long_folder_name_01");
+
+      Dir : constant Path := Deep (12);
+   begin
+      Create_Directory (Dir, (Create_Intermediate => True, others => <>));
+
+      Link (Dir / "link", "..", (others => <>));
+      Assert (Kind (Dir / "link") = Softlink);
+      Assert (Target (Dir / "link") = "..");
+      Assert (Canonical (Dir / "link") = Canonical (Parent (Dir)));
+
+      Unlink (Dir / "link");
+      Assert (Kind (Dir / "link") = Nothing);
+
+      Delete_Tree (Top);
+   end Check_Long_Link;
+
+   -------------------------
+   -- Check_Read_Only_Dir --
+   -------------------------
+
+   --  Folders can also be read-only there
+
+   procedure Check_Read_Only_Dir is
+      Dir : constant Path := Test_Dir / "read_only_dir";
+   begin
+      Create_Directory (Dir);
+      GNAT.OS_Lib.Set_Read_Only (Dir);
+      Delete_Directory (Dir);
+      Assert (Kind (Dir) = Nothing);
+   end Check_Read_Only_Dir;
+
    -------------------
    -- Make_Junction --
    -------------------
@@ -314,10 +436,16 @@ begin
    Check_Relative;
    Check_UNC;
 
+   Check_Read_Only_Dir;
+
+   Check_Long_Paths (Absnormal (Test_Dir / "abs"));
+   Check_Long_Paths (Test_Dir / "rel");
+
    Check_Junction;
 
    if Kind ("canary") = Softlink then
       Check_Slashed_Target;
+      Check_Long_Link (Test_Dir / "link");
    else
       Ada.Text_IO.Put_Line ("Skipping link tests as they are not supported");
    end if;
