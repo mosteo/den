@@ -55,6 +55,11 @@ private package Den.OS with Preelaborate is
    --  Delete the softlink at Path
    --  Raises Use_Error if operation fails
 
+   procedure Copy_Link (Source, Name : String);
+   --  Create at Name a link of the same kind as the one at Source and with the
+   --  same target, whether that target exists or not.
+   --  Raises Use_Error if operation fails
+
    procedure Create_Link (Target, Name : String; Is_Dir : Boolean);
    --  Create a softlink at Name pointing to Target, flagging it as Is_Dir
 

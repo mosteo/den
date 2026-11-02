@@ -876,10 +876,106 @@ int c_delete_link (const char *path)
     return error;
 }
 
+// Allows unprivileged users to create links in Developer Mode, but systems that
+// predate this flag reject it. Returns an error code.
+static int create_symlink (const WCHAR *name, const WCHAR *target, int is_dir)
+{
+    DWORD flags = is_dir ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0;
+
+    if (CreateSymbolicLinkW
+            (name, target, flags | SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE))
+        return 0;
+
+    if (GetLastError () == ERROR_INVALID_PARAMETER
+        && CreateSymbolicLinkW (name, target, flags))
+        return 0;
+
+    return last_error ();
+}
+
+// A junction is a directory that holds this data, which takes no privileges,
+// and whose target is always absolute. Returns an error code.
+static int create_junction (const WCHAR *name, reparse_buffer *buffer)
+{
+    const DWORD header = 8; // The fields before the data that the length counts
+    DWORD  returned;
+    HANDLE file;
+    int    error = 0;
+
+    if (!CreateDirectoryW (name, NULL))
+        return last_error ();
+
+    file = CreateFileW
+        (name, GENERIC_WRITE, 0, NULL, OPEN_EXISTING,
+         FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, NULL);
+
+    if (file == INVALID_HANDLE_VALUE) {
+        error = last_error ();
+    } else {
+        if (!DeviceIoControl (file, FSCTL_SET_REPARSE_POINT, buffer,
+                              header + buffer->data.ReparseDataLength,
+                              NULL, 0, &returned, NULL))
+            error = last_error ();
+
+        CloseHandle (file);
+    }
+
+    if (error != 0)
+        RemoveDirectoryW (name); // Don't leave a plain directory in its place
+
+    return error;
+}
+
+int c_copy_link (const char *source, const char *name)
+{
+    int            error       = 0;
+    WCHAR         *wide_source = to_wide (source, &error);
+    WCHAR         *wide_name   = wide_source == NULL ? NULL
+                                                     : to_wide (name, &error);
+    reparse_buffer buffer;
+
+    if (wide_name != NULL)
+        error = read_reparse_point (wide_source, &buffer);
+
+    if (wide_name != NULL && error == 0) {
+        if (buffer.data.ReparseTag == IO_REPARSE_TAG_MOUNT_POINT) {
+            error = create_junction (wide_name, &buffer);
+        } else {
+            const WCHAR *target;
+            size_t       length;
+
+            error = stored_target (&buffer, &target, &length);
+
+            if (error == 0) {
+                // Stored targets are not terminated
+                WCHAR *terminated = malloc ((length + 1) * sizeof (WCHAR));
+
+                if (terminated == NULL) {
+                    error = ERROR_NOT_ENOUGH_MEMORY;
+                } else {
+                    wcsncpy (terminated, target, length);
+                    terminated[length] = 0;
+
+                    // The kind of link is that of the original, even if broken
+                    error = create_symlink
+                        (wide_name, terminated,
+                         GetFileAttributesW (wide_source)
+                         & FILE_ATTRIBUTE_DIRECTORY);
+
+                    free (terminated);
+                }
+            }
+        }
+    }
+
+    free (wide_source);
+    free (wide_name);
+    return error;
+}
+
 int c_create_link (const char *target, const char *name, int is_dir)
 {
     int    error       = 0;
-    DWORD  flags       = is_dir ? SYMBOLIC_LINK_FLAG_DIRECTORY : 0;
     WCHAR *wide_target = decode_path (target, &error); // Stored as given
     WCHAR *wide_name   = wide_target == NULL ? NULL : to_wide (name, &error);
 
@@ -891,16 +987,7 @@ int c_create_link (const char *target, const char *name, int is_dir)
                 *c = L'\\';
         }
 
-        // Allows unprivileged users to create links in Developer Mode, but
-        // systems that predate this flag reject it
-        if (!CreateSymbolicLinkW
-                (wide_name, wide_target,
-                 flags | SYMBOLIC_LINK_FLAG_ALLOW_UNPRIVILEGED_CREATE)
-            && !(GetLastError () == ERROR_INVALID_PARAMETER
-                 && CreateSymbolicLinkW (wide_name, wide_target, flags)))
-        {
-            error = last_error ();
-        }
+        error = create_symlink (wide_name, wide_target, is_dir);
     }
 
     free (wide_target);

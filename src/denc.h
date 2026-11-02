@@ -60,6 +60,10 @@ int c_link_target (const char *path, char *buf, size_t bufsiz);
 // Returns an error code
 int c_delete_link (const char *path);
 
+// Returns an error code. Creates at name a link of the same kind as the one at
+// source and with the same target, whether that target exists or not.
+int c_copy_link (const char *source, const char *name);
+
 // Returns an error code. is_dir, zero or nonzero, says whether the link is for
 // a file or a directory (required on Windows)
 int c_create_link (const char *target, const char *name, int is_dir);

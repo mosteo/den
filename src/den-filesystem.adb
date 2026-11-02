@@ -160,10 +160,7 @@ package body Den.Filesystem is
          end case;
 
          --  Here we recreate the link. Target might not yet be in place.
-         OS.Create_Link
-           (Name   => Dst,
-            Target => Target (Src),
-            Is_Dir => Kind (Src, Resolve_Links => True) = Directory);
+         OS.Copy_Link (Source => Src, Name => Dst);
       end Copy_Link;
 
       ------------------

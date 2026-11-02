@@ -179,6 +179,31 @@ int c_delete_link (const char *path)
     return unlink (path) == 0 ? 0 : last_error ();
 }
 
+int c_copy_link (const char *source, const char *name)
+{
+    size_t size = 1024;
+
+    for (;;) {
+        char *target = malloc (size);
+        int   result;
+
+        if (target == NULL)
+            return ENOMEM;
+
+        result = c_link_target (source, target, size);
+
+        if (result == 0 && symlink (target, name) != 0)
+            result = last_error ();
+
+        free (target);
+
+        if (result != ERR_BUFFER_TOO_SMALL)
+            return result;
+
+        size *= 2;
+    }
+}
+
 int c_create_link (const char *target, const char *name, int is_dir)
 {
     (void) is_dir; // Only meaningful on Windows

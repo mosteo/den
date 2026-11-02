@@ -348,6 +348,89 @@ procedure Den_Tests.Windows is
       Assert (Success, "Could not create junction: " & Name);
    end Make_Junction;
 
+   ---------------
+   -- Dir_Shows --
+   ---------------
+
+   --  The dir command tells apart the kinds of links in a folder, showing them
+   --  as <JUNCTION>, <SYMLINKD> for directories, or <SYMLINK> for files
+
+   function Dir_Shows (Folder : Path; Text : String) return Boolean is
+      use GNAT.OS_Lib;
+
+      Cmd     : String_Access := Locate_Exec_On_Path ("cmd.exe");
+      Args    : Argument_List :=
+                  (new String'("/c"),
+                   new String'("dir /AL " & Folder & " | findstr " & Text));
+      Success : Boolean;
+   begin
+      Spawn (Cmd.all, Args, Success);
+      Free (Cmd);
+      for Arg of Args loop
+         Free (Arg);
+      end loop;
+      return Success;
+   end Dir_Shows;
+
+   -------------------------
+   -- Check_Copy_Junction --
+   -------------------------
+
+   --  A junction is copied as such, as creating a symlink would need privileges
+   --  that the original didn't, and its target isn't copied along
+
+   procedure Check_Copy_Junction is
+      Real   : constant Path := Test_Dir / "copy_real";
+      Tree   : constant Path := Test_Dir / "copy_tree";
+      Copied : constant Path := Test_Dir / "copied_tree";
+   begin
+      Create_Directory (Real);
+      Touch (Real / "precious");
+      Create_Directory (Tree);
+      Create_Directory (Copied);
+      Make_Junction (Tree / "junction", Absnormal (Real));
+
+      Copy (Tree, Copied);
+
+      Assert (Kind (Copied / "junction") = Softlink);
+      Assert (Dir_Shows (Copied, "JUNCTION"));
+      Assert (Target (Copied / "junction") = Target (Tree / "junction"));
+      Assert (Canonical (Copied / "junction") = Canonical (Real));
+
+      Delete_Tree (Copied);
+      Delete_Tree (Tree);
+      Assert (Kind (Real / "precious") = File);
+      Delete_Tree (Real);
+   end Check_Copy_Junction;
+
+   --------------------------------
+   -- Check_Copy_Broken_Dir_Link --
+   --------------------------------
+
+   --  A broken link has no target to tell what kind of link it is
+
+   procedure Check_Copy_Broken_Dir_Link is
+      Real   : constant Path := Test_Dir / "gone";
+      Tree   : constant Path := Test_Dir / "broken_tree";
+      Copied : constant Path := Test_Dir / "broken_copy";
+   begin
+      Create_Directory (Real);
+      Create_Directory (Tree);
+      Create_Directory (Copied);
+      Link (Tree / "dir_link", ".." / "gone");
+      Delete_Directory (Real);
+      Assert (Is_Broken (Tree / "dir_link"));
+      Assert (Dir_Shows (Tree, "SYMLINKD"));
+
+      Copy (Tree / "dir_link", Copied / "dir_link");
+
+      Assert (Kind (Copied / "dir_link") = Softlink);
+      Assert (Dir_Shows (Copied, "SYMLINKD"));
+
+      Delete_Tree (Copied);
+      Delete_Tree (Tree);
+   end Check_Copy_Broken_Dir_Link;
+
    --------------------
    -- Check_Junction --
    --------------------
@@ -442,9 +525,11 @@ begin
    Check_Long_Paths (Test_Dir / "rel");
 
    Check_Junction;
+   Check_Copy_Junction;
 
    if Kind ("canary") = Softlink then
       Check_Slashed_Target;
+      Check_Copy_Broken_Dir_Link;
       Check_Long_Link (Test_Dir / "link");
    else
       Ada.Text_IO.Put_Line ("Skipping link tests as they are not supported");

@@ -79,6 +79,10 @@ package body Den.OS is
                            return C.int
       with Import, Convention => C;
 
+   function C_Copy_Link (Source, Name : Chars_Ptr)
+                         return C.int
+      with Import, Convention => C;
+
    function C_Create_Link (Target,
                            Name   : Chars_Ptr;
                            Is_Dir : C.int)
@@ -353,6 +357,18 @@ package body Den.OS is
       Check_Path (Path);
       Check (C_Delete_Link (To_C (Path).To_Ptr), "delete link", Path);
    end Delete_Link;
+
+   ---------------
+   -- Copy_Link --
+   ---------------
+
+   procedure Copy_Link (Source, Name : String) is
+   begin
+      Check_Path (Source);
+      Check_Path (Name);
+      Check (C_Copy_Link (To_C (Source).To_Ptr, To_C (Name).To_Ptr),
+             "copy link", Source & " --> " & Name);
+   end Copy_Link;
 
    -----------------
    -- Create_Link --
