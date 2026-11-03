@@ -52,14 +52,15 @@ package body Den.Du is
                declare
                   use Den.Operators;
                   Child         : constant Den.Path := Path / Name;
+                  Child_Kind    : constant Kinds    := Den.Kind (Child);
                   Children      : Tree;
                   Children_Size : Sizes := 0;
                begin
-                  if Kind (Child) = Nothing then
+                  if Child_Kind = Nothing then
                      OS.Check_Not_Too_Long (Child);
                   end if;
 
-                  if Kind (Child) = Directory then
+                  if Child_Kind = Directory then
                      Children := List_Internal (Child);
                      for Child of Children loop
                         Children_Size := Children_Size + Child.Tree_Size;
@@ -69,10 +70,10 @@ package body Den.Du is
                   Result.Insert
                     (Du.Item'
                        (Path_Length   => Child'Length,
-                        Kind          => Den.Kind (Child),
+                        Kind          => Child_Kind,
                         Path          => Child,
                         Size          =>
-                          (case Den.Kind (Child) is
+                          (case Child_Kind is
                               when File      => Sizes (OS.File_Size (Child)),
                               when Softlink  =>
                                 Sizes (Den.Target_Length (Child)),
@@ -104,14 +105,9 @@ package body Den.Du is
             Root.Insert
               (Item'
                  (Path_Length   => Clean_Path'Length,
-                  Kind          => Den.Kind (Clean_Path),
+                  Kind          => Directory,
                   Path          => Clean_Path,
-                  Size          =>
-                    (case Den.Kind (Clean_Path) is
-                        when File      => Sizes (OS.File_Size (Clean_Path)),
-                        when Softlink  =>
-                          Sizes (Den.Target_Length (Clean_Path)),
-                        when others    => 0),
+                  Size          => 0,
                   Children_Size => Size,
                   Children      => Children));
          end;

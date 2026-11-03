@@ -1,5 +1,3 @@
---  with Ada.Directories;
-
 with Ada.Environment_Variables;
 with Ada.IO_Exceptions;
 
@@ -9,7 +7,6 @@ with GNAT.IO;
 
 package body Den is
 
-   --  package Dirs renames Ada.Directories;
    package IOex renames Ada.IO_Exceptions;
 
    -----------
@@ -99,6 +96,9 @@ package body Den is
       end return;
    end Ancestors;
 
+   Device_Prefix_Length : constant := 4;
+   --  Of \\?\ and \\.\
+
    -------------------
    -- Prefix_Length --
    -------------------
@@ -135,6 +135,15 @@ package body Den is
          return (if I <= This'Last then I + 1 else I);
       end After;
 
+      ------------------
+      -- Drive_Length --
+      ------------------
+
+      --  The length of the drive starting at Pos, with its separator if any
+
+      function Drive_Length (Pos : Integer) return Natural
+      is (if Is_Sep (Pos + 2) then 3 else 2);
+
    begin
       if not Windows then
          return (if This'Length > 0 and then This (First) = '/' then 1 else 0);
@@ -142,24 +151,25 @@ package body Den is
 
       --  \\?\ and \\.\, which only the former can be followed by a root
 
-      if This'Length >= 4
+      if This'Length >= Device_Prefix_Length
         and then Is_Sep (First) and then Is_Sep (First + 1)
         and then This (First + 2) in '?' | '.'
         and then Is_Sep (First + 3)
       then
          declare
-            Rest : constant Integer := First + 4;
+            Rest : constant Integer := First + Device_Prefix_Length;
+            UNC  : constant String  := "unc\";
          begin
             if This (First + 2) = '.' then
-               return 4;
+               return Device_Prefix_Length;
             elsif Has_Drive (Rest) then
-               return (if Is_Sep (Rest + 2) then 7 else 6);
-            elsif Starts_With (Rest, "unc\") then
-               return After (After (Rest + 4)) - First;
+               return Device_Prefix_Length + Drive_Length (Rest);
+            elsif Starts_With (Rest, UNC) then
+               return After (After (Rest + UNC'Length)) - First;
             elsif Starts_With (Rest, "volume{") then
                return After (Rest) - First;
             else
-               return 4;
+               return Device_Prefix_Length;
             end if;
          end;
       end if;
@@ -177,7 +187,7 @@ package body Den is
       if Is_Sep (First) then
          return 1;
       elsif Has_Drive (First) then
-         return (if Is_Sep (First + 2) then 3 else 2);
+         return Drive_Length (First);
       else
          return 0;
       end if;
@@ -211,7 +221,7 @@ package body Den is
    is
       Prefix   : constant Natural := Prefix_Length (This, Windows);
       Verbatim : constant Boolean :=
-                   Windows and then Prefix >= 4
+                   Windows and then Prefix >= Device_Prefix_Length
                    and then This (This'First + 2) = '?';
       Start    : Integer := This'First + Prefix;
 
@@ -319,11 +329,12 @@ package body Den is
    ---------------
 
    function Canonical (This : Existing_Path) return Canonical_Path is
-      Result : constant String := OS_Canonical (This);
+      Result : constant String := Try_Canonical (This);
    begin
-      if Result = "" or else Result not in Canonical_Path then
+      if Result = "" then
          raise Bad_Path with
-           "Cannot canonicalize: " & This & " [os_canonical: " & Result & "]";
+           "Cannot canonicalize: " & This
+           & " [os_canonical: " & OS_Canonical (This) & "]";
       end if;
 
       return Result;
@@ -333,13 +344,32 @@ package body Den is
    -- Canonizable --
    -----------------
 
-   function Canonizable (This : String) return Boolean is
+   function Canonizable (This : String) return Boolean
+   is (Try_Canonical (This) /= "");
+
+   -------------------
+   -- Try_Canonical --
+   -------------------
+
+   function Try_Canonical (This : String) return String is
    begin
-      return Canonical (Scrub (This)) /= "";
+      if not Can_Scrub (This) then
+         return "";
+      end if;
+
+      declare
+         Result : constant String := OS_Canonical (Scrub (This));
+      begin
+         --  Not every OS resolves every link, as with loops on Windows or any
+         --  link under Wine, so check that it really did.
+         return (if Result /= "" and then Result in Canonical_Path
+                 then Result
+                 else "");
+      end;
    exception
-      when others =>
-         return False;
-   end Canonizable;
+      when Bad_Path => -- As with an embedded NUL
+         return "";
+   end Try_Canonical;
 
    --------------
    -- Eat_Dots --
@@ -409,13 +439,17 @@ package body Den is
    -- Parent --
    ------------
 
-   function Parent (This : Path) return Path
-   is (if Is_Root (This) then
-          This
-       elsif not Has_Parent (This) then
-          raise IOex.Use_Error with "Path has no parent: " & This
-       else
-          Parts (This).Up_To (Integer (Parts (This).Length) - 1).To_Path);
+   function Parent (This : Path) return Path is
+      Parted : constant Path_Parts := Parts (This);
+   begin
+      if Is_Root (This) then
+         return This;
+      elsif Integer (Parted.Length) < 2 then
+         raise IOex.Use_Error with "Path has no parent: " & This;
+      else
+         return Parted.Up_To (Integer (Parted.Length) - 1).To_Path;
+      end if;
+   end Parent;
 
    -----------
    -- Parts --
@@ -482,21 +516,17 @@ package body Den is
       return Parted.To_Path;
    end Normal;
 
-   -------------------
-   -- Canonical_Raw --
-   -------------------
-   --  Use OS-specific ways of obtaining a canonical path, resolving softlinks
-   --  if possible. In case of error (broken, recursive links?), it will return
-   --  "".
+   ------------------
+   -- OS_Canonical --
+   ------------------
+
    function OS_Canonical (This : Path) return String is
    begin
-      begin
-         return OS.Canonical (This);
-      exception
-         when Ada.IO_Exceptions.Use_Error =>
-            Log ("Cannot canonicalize path: " & This);
-            return "";
-      end;
+      return OS.Canonical (This);
+   exception
+      when Ada.IO_Exceptions.Use_Error =>
+         Log ("Cannot canonicalize path: " & This);
+         return "";
    end OS_Canonical;
 
    ------------------
@@ -600,8 +630,6 @@ package body Den is
 
       if This in Path then
          return This;
-      elsif This = "" then
-         raise Bad_Path with "Bad path: (empty)";
       else
          raise Bad_Path with "Bad path: " & This;
       end if;

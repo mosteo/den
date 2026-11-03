@@ -139,6 +139,10 @@ static WCHAR *decode_path (const char *path, int *error)
 // directories, unless paths are given in the verbatim form.
 #define LONGEST_REGULAR_PATH 248
 
+// The lengths of the prefixes \\?\, \\.\ and \??\, and of \\?\UNC\ for shares
+#define PREFIX_LENGTH     4
+#define UNC_PREFIX_LENGTH 8
+
 // Returns the wide version of path to use with the OS, to be freed by the caller,
 // or NULL if it cannot be converted, with the reason in error. Long paths are
 // converted to the verbatim form, which requires them to be absolute and to use
@@ -154,8 +158,8 @@ static WCHAR *to_wide (const char *path, int *error)
         return NULL;
 
     // These are already in their final form
-    if (wcsncmp (wide, L"\\\\?\\", 4) == 0
-        || wcsncmp (wide, L"\\\\.\\", 4) == 0)
+    if (wcsncmp (wide, L"\\\\?\\", PREFIX_LENGTH) == 0
+        || wcsncmp (wide, L"\\\\.\\", PREFIX_LENGTH) == 0)
     {
         return wide;
     }
@@ -168,7 +172,7 @@ static WCHAR *to_wide (const char *path, int *error)
         return wide;
 
     full   = malloc (needed * sizeof (WCHAR));
-    result = malloc ((needed + 8) * sizeof (WCHAR)); // Room for the prefix
+    result = malloc ((needed + UNC_PREFIX_LENGTH) * sizeof (WCHAR)); // And the prefix
 
     if (full == NULL || result == NULL) {
         *error = ERROR_NOT_ENOUGH_MEMORY;
@@ -251,26 +255,36 @@ static int from_wide (const WCHAR *in, size_t length, char *out, size_t bufsiz)
 // may be modified, and the returned path is not terminated.
 static const WCHAR *regular_path (WCHAR *path, size_t *length)
 {
-    if (*length < 4 || path[0] != L'\\' || (path[1] != L'\\' && path[1] != L'?')
+    if (*length < PREFIX_LENGTH
+        || path[0] != L'\\' || (path[1] != L'\\' && path[1] != L'?')
         || path[2] != L'?' || path[3] != L'\\')
     {
         return path; // Not prefixed
     }
 
-    // \\?\UNC\server\share --> \\server\share
-    if (*length >= 8 && _wcsnicmp (path + 4, L"UNC\\", 4) == 0) {
-        path[6] = L'\\';
-        *length -= 6;
-        return path + 6;
+    // \\?\UNC\server\share --> \\server\share, reusing the end of the prefix
+    if (*length >= UNC_PREFIX_LENGTH
+        && _wcsnicmp (path + PREFIX_LENGTH, L"UNC\\",
+                      UNC_PREFIX_LENGTH - PREFIX_LENGTH) == 0)
+    {
+        const size_t skipped = UNC_PREFIX_LENGTH - 2;
+
+        path[skipped] = L'\\';
+        *length -= skipped;
+        return path + skipped;
     }
 
     // \\?\C:\dir --> C:\dir
-    if (*length >= 6 && path[5] == L':'
-        && ((path[4] >= L'a' && path[4] <= L'z')
-            || (path[4] >= L'A' && path[4] <= L'Z')))
-    {
-        *length -= 4;
-        return path + 4;
+    if (*length >= PREFIX_LENGTH + 2) {
+        const WCHAR *drive = path + PREFIX_LENGTH;
+
+        if (drive[1] == L':'
+            && ((drive[0] >= L'a' && drive[0] <= L'z')
+                || (drive[0] >= L'A' && drive[0] <= L'Z')))
+        {
+            *length -= PREFIX_LENGTH;
+            return drive;
+        }
     }
 
     // There is no other form for the likes of \\?\Volume{guid}\dir
@@ -440,10 +454,12 @@ int c_full_path (const char *inputPath, char *fullPath, size_t bufsiz)
 // the start of the result matters, and devices have short names.
 static int is_device (const WCHAR *path)
 {
-    WCHAR full[16];
-    DWORD length = GetFullPathNameW (path, 16, full, NULL);
+    WCHAR       full[16];
+    const DWORD size   = sizeof (full) / sizeof (*full);
+    DWORD       length = GetFullPathNameW (path, size, full, NULL);
 
-    return length > 0 && length < 16 && wcsncmp (full, L"\\\\.\\", 4) == 0;
+    return length > 0 && length < size
+           && wcsncmp (full, L"\\\\.\\", PREFIX_LENGTH) == 0;
 }
 
 static int wide_kind (const WCHAR *path)

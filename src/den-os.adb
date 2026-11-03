@@ -123,6 +123,9 @@ package body Den.OS is
       end if;
    end Check;
 
+   Buffer_Size : constant := 4096;
+   --  Fits any name and most paths. Filled grows it for longer paths.
+
    ------------
    -- Filled --
    ------------
@@ -131,13 +134,12 @@ package body Den.OS is
 
    function Filled (Action : String;
                     Path   : String;
-                    Size   : Positive;
                     Fill   : not null access function (Buffer : Chars_Ptr;
                                                        Bufsiz : C.size_t)
                                                        return C.int)
                     return String
    is
-      Bufsize : Integer := Size;
+      Bufsize : Integer := Buffer_Size;
    begin
       Check_Path (Path);
 
@@ -191,7 +193,7 @@ package body Den.OS is
       is (C_Canonical (To_C (Input_Path).To_Ptr, Buffer, Bufsiz));
 
    begin
-      return Filled ("canonicalize path", Input_Path, 32768, Fill'Access);
+      return Filled ("canonicalize path", Input_Path, Fill'Access);
    end Canonical;
 
    ---------------
@@ -204,7 +206,7 @@ package body Den.OS is
       is (C_Full_Path (To_C (Path).To_Ptr, Buffer, Bufsiz));
 
    begin
-      return Filled ("get full path", Path, 32768, Fill'Access);
+      return Filled ("get full path", Path, Fill'Access);
    end Full_Path;
 
    -----------------
@@ -217,7 +219,7 @@ package body Den.OS is
       is (C_Getcwd (Buffer, Bufsiz));
 
    begin
-      return Filled ("get current directory", "", 32768, Fill'Access);
+      return Filled ("get current directory", "", Fill'Access);
    end Current_Dir;
 
    ---------------
@@ -251,7 +253,7 @@ package body Den.OS is
 
       Error : aliased C.int := 0;
       Dir   : System.Address;
-      Cbuf  : C_String := Buffer (4096); -- Far over any limit on name lengths
+      Cbuf  : C_String := Buffer (Buffer_Size);
    begin
       Check_Path (Path);
 
@@ -361,7 +363,7 @@ package body Den.OS is
       is (C_Link_Target (To_C (Path).To_Ptr, Buffer, Bufsiz));
 
    begin
-      return Filled ("get link target", Path, 1024, Fill'Access);
+      return Filled ("get link target", Path, Fill'Access);
    end Link_Target;
 
    -----------------

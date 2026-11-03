@@ -148,11 +148,11 @@ package Den with Preelaborate is
    --  A string that may be useful while debugging, says the kind of This
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds;
-   --  May return Softlink for a self-referential link even with Resolve_Links!
+   --  With Resolve_Links, a softlink that cannot be resolved, as it is broken or
+   --  loops, gives Nothing.
 
    function Target_Kind (This : Path) return Kinds
    is (Kind (This, Resolve_Links => True));
-   --  May still return softlink if the softlink is unresolvable
 
    function Is_Hard (This : Path) return Boolean
    is (Is_Normal (This)
@@ -322,6 +322,10 @@ private
    function Is_Softlink (This : Path) return Boolean;
    --  Always false in platforms without softlink support. True even for broken
    --  links. False if This doesn't designate anything in the filesystem.
+
+   function Try_Canonical (This : String) return String;
+   --  The canonical path to This, or "" if it has none. Use this instead of
+   --  Canonizable followed by Canonical, which would find it twice.
 
    function OS_Canonical (This : Path) return String;
    --  The OS own canonicalization function. Returns a canonical path if

@@ -60,8 +60,9 @@ package body Den.Filesystem is
       --  Before overwriting, as they may be the same under different names
 
       procedure Delete_Target (Src, Dst : Path) is
+         Real_Src : constant String := Try_Canonical (Src);
       begin
-         if Canonizable (Src) and then Canonical (Src) = Canonical (Dst) then
+         if Real_Src /= "" and then Real_Src = Try_Canonical (Dst) then
             raise Use_Error with
               Error ("source and destination are the same: "
                      & Src & ", " & Dst);
@@ -217,8 +218,7 @@ package body Den.Filesystem is
          --  the name of the link, and a folder has its contents go into Dst, as
          --  any other folder, which we create if needed.
 
-         procedure Copy_Link_Target is
-            Real : constant Path := Canonical (Src);
+         procedure Copy_Link_Target (Real : Path) is
          begin
             if Kind (Real) = Directory then
                if Kind (Dst) = Nothing then
@@ -242,9 +242,11 @@ package body Den.Filesystem is
          end Copy_Special;
 
       begin
-         Log ("Copy " & Src & P (Kind (Src)'Image)
-              & " --> "
-              & Dst & " ...");
+         if Debug then
+            Log ("Copy " & Src & P (Kind (Src)'Image)
+                 & " --> "
+                 & Dst & " ...");
+         end if;
 
          case Kind (Src) is
             when Nothing =>
@@ -255,18 +257,27 @@ package body Den.Filesystem is
             when Directory =>
                Copy_Dir;
             when Softlink =>
-               if Options.Resolve_Links and then Canonizable (Src) then
-                  Copy_Link_Target;
-               else
-                  Copy_Link;
-               end if;
+               declare
+                  Real : constant String :=
+                           (if Options.Resolve_Links
+                            then Try_Canonical (Src)
+                            else "");
+               begin
+                  if Real /= "" then
+                     Copy_Link_Target (Real);
+                  else
+                     Copy_Link;
+                  end if;
+               end;
             when Special =>
                Copy_Special;
          end case;
 
-         Log ("Copy " & Src & P (Kind (Src)'Image)
-              & " --> "
-              & Dst & P (Kind (Dst)'Image) & " OK");
+         if Debug then
+            Log ("Copy " & Src & P (Kind (Src)'Image)
+                 & " --> "
+                 & Dst & P (Kind (Dst)'Image) & " OK");
+         end if;
       end Copy_Item;
 
    begin
@@ -397,7 +408,9 @@ package body Den.Filesystem is
       Options : Delete_Directory_Options := (others => <>))
    is
    begin
-      Log ("deleting: " & This & P (Kind (This)'Image) & " ...");
+      if Debug then
+         Log ("deleting: " & This & P (Kind (This)'Image) & " ...");
+      end if;
 
       case Kind (This) is
          when Nothing =>
@@ -432,7 +445,9 @@ package body Den.Filesystem is
             end if;
       end case;
 
-      Log ("deleting: " & This & P (Kind (This)'Image) & " OK");
+      if Debug then
+         Log ("deleting: " & This & P (Kind (This)'Image) & " OK");
+      end if;
    end Delete_Directory;
 
    ----------
@@ -466,11 +481,13 @@ package body Den.Filesystem is
       end Rel_Target;
 
    begin
-      Log ("linking: " & From
-           & " --> "
-           & Target
-           & P ("absolute target: " & Abs_Target & P (Kind (Abs_Target)'Image))
-           & " ...");
+      if Debug then
+         Log ("linking: " & From
+              & " --> "
+              & Target
+              & P ("absolute target: " & Abs_Target & P (Kind (Abs_Target)'Image))
+              & " ...");
+      end if;
 
       --  Divert if the relative path safety is enabled
       if Options.Relative_Target_From_Absolute_Path then
@@ -524,9 +541,11 @@ package body Den.Filesystem is
       pragma Assert (Kind (From) = Softlink,
                      "link not created: " & From & P (Kind (From)'Image));
 
-      Log ("linking: " & From & P (Kind (From)'Image)
-           & " --> "
-           & Target & P (Kind (Target)'Image) & " OK");
+      if Debug then
+         Log ("linking: " & From & P (Kind (From)'Image)
+              & " --> "
+              & Target & P (Kind (Target)'Image) & " OK");
+      end if;
    end Link;
 
    -----------
@@ -535,7 +554,9 @@ package body Den.Filesystem is
 
    procedure Unlink (This : Path) is
    begin
-      Log ("unlinking: " & This & P (Kind (This)'Image) & " ...");
+      if Debug then
+         Log ("unlinking: " & This & P (Kind (This)'Image) & " ...");
+      end if;
 
       if Kind (This) /= Softlink then
          raise Use_Error with
@@ -545,7 +566,9 @@ package body Den.Filesystem is
 
       OS.Delete_Link (This);
 
-      Log ("unlinking: " & This & P (Kind (This)'Image) & " OK");
+      if Debug then
+         Log ("unlinking: " & This & P (Kind (This)'Image) & " OK");
+      end if;
    end Unlink;
 
    -----------------
@@ -565,8 +588,10 @@ package body Den.Filesystem is
          if Kind (Target_Path) = File then
             Delete_File (Target_Path, Options);
          elsif Options.Do_Not_Fail then
-            Log ("skipping non-file target: " & Target_Path &
-                 " (kind: " & Kind (Target_Path)'Image & ")");
+            if Debug then
+               Log ("skipping non-file target: " & Target_Path &
+                    " (kind: " & Kind (Target_Path)'Image & ")");
+            end if;
          else
             raise Use_Error with
               Error ("target is not a regular file: " & Target_Path &
@@ -575,7 +600,9 @@ package body Den.Filesystem is
       end Delete_Target_If_Regular_File;
 
    begin
-      Log ("deleting file: " & This & P (Kind (This)'Image) & " ...");
+      if Debug then
+         Log ("deleting file: " & This & P (Kind (This)'Image) & " ...");
+      end if;
 
       case Kind (This) is
          when Nothing =>
@@ -599,33 +626,41 @@ package body Den.Filesystem is
          when File =>
             OS.Delete_File (This);
          when Softlink =>
-            case Options.Delete_Softlinks is
-               when Fail =>
-                  raise Use_Error with
-                    Error ("target is a softlink, use Unlink: " & This);
-               when Delete_Link =>
-                  Unlink (This);
-               when Delete_Target =>
-                  if Canonizable (This) then
-                     Delete_Target_If_Regular_File (Canonical (This));
-                  elsif Options.Do_Not_Fail then
-                     Log ("skipping unresolvable link target: " & This);
-                  else
+            declare
+               Real : constant String :=
+                        (if Options.Delete_Softlinks in Delete_Target
+                                                      | Delete_Both
+                         then Try_Canonical (This)
+                         else "");
+            begin
+               case Options.Delete_Softlinks is
+                  when Fail =>
                      raise Use_Error with
-                       Error ("cannot delete target: " & Target (This)
-                              & " of unresolvable link: "
-                              & This);
-                  end if;
-               when Delete_Both =>
-                  if Canonizable (This) then
-                     Delete_Target_If_Regular_File (Canonical (This));
-                  elsif not Options.Do_Not_Fail then
-                     raise Use_Error with
-                       Error ("cannot delete target of unresolvable link: "
-                              & This);
-                  end if;
-                  Unlink (This);
-            end case;
+                       Error ("target is a softlink, use Unlink: " & This);
+                  when Delete_Link =>
+                     Unlink (This);
+                  when Delete_Target =>
+                     if Real /= "" then
+                        Delete_Target_If_Regular_File (Real);
+                     elsif Options.Do_Not_Fail then
+                        Log ("skipping unresolvable link target: " & This);
+                     else
+                        raise Use_Error with
+                          Error ("cannot delete target: " & Target (This)
+                                 & " of unresolvable link: "
+                                 & This);
+                     end if;
+                  when Delete_Both =>
+                     if Real /= "" then
+                        Delete_Target_If_Regular_File (Real);
+                     elsif not Options.Do_Not_Fail then
+                        raise Use_Error with
+                          Error ("cannot delete target of unresolvable link: "
+                                 & This);
+                     end if;
+                     Unlink (This);
+               end case;
+            end;
          when Special =>
             if Options.Do_Not_Fail then
                Log ("skipping special file: " & This);
@@ -636,7 +671,9 @@ package body Den.Filesystem is
             end if;
       end case;
 
-      Log ("deleting file: " & This & P (Kind (This)'Image) & " OK");
+      if Debug then
+         Log ("deleting file: " & This & P (Kind (This)'Image) & " OK");
+      end if;
    end Delete_File;
 
    -----------------
@@ -721,9 +758,10 @@ package body Den.Filesystem is
 
    function Pseudocanonical (This : Path) return Absolute_Path
    is
+      Real : constant String := Try_Canonical (This);
    begin
-      if Canonizable (This) then
-         return Canonical (This);
+      if Real /= "" then
+         return Real;
       end if;
 
       declare
@@ -741,18 +779,23 @@ package body Den.Filesystem is
                   Phead : constant Path_Parts    := Parted.Up_To (I);
                   Head  : constant Absolute_Path := Phead.To_Path;
                   Ptail : constant Path_Parts    := Parted.From (I + 1);
-               begin
+
                   --  At this point Head is absnormal, though may be a softlink.
                   --  We cannot replace a link by a target that is a bad path,
                   --  nor keep on doing it for those whose target goes through
                   --  themselves, so these are left as they are.
+                  Real_Head : constant String :=
+                                (if Is_Softlink (Head)
+                                 then Try_Canonical (Head)
+                                 else "");
+               begin
                   if not Is_Softlink (Head) then
                      I := I + 1;
-                  elsif Canonizable (Head) then
-                     --  Valid link: substitute target plus tail
-                     Parted := Parts (Canonical (Head)) & Ptail;
-                     --  No need to go over parts guaranteed to be good
-                     I := Integer (Parts (Canonical (Head)).Length) + 1;
+                  elsif Real_Head /= "" then
+                     --  Valid link: substitute target plus tail, and there's no
+                     --  need to go over the parts that are guaranteed to be good
+                     I      := Integer (Parts (Real_Head).Length) + 1;
+                     Parted := Parts (Real_Head) & Ptail;
                   elsif Can_Scrub (Target (Head))
                     and then Is_Broken (Head)
                     and then Hops < Max_Hops

@@ -4,8 +4,6 @@ with Den.Filesystem; use Den.Filesystem;
 with Den.Iterators;
 with Den.OS;
 
---  with GNAT.IO; use GNAT.IO;
-
 package body Den.Walk is
 
    use Operators;
@@ -54,8 +52,8 @@ package body Den.Walk is
 
       --  Softlinks may be excluded from being reported, not from being entered
 
-      function Visits (Here : Path) return Boolean
-      is (Options.Visit_Softlinks or else Kind (Here) /= Softlink);
+      function Visits (Here : Kinds) return Boolean
+      is (Options.Visit_Softlinks or else Here /= Softlink);
 
       procedure List (Dir : Path; Depth : Positive);
 
@@ -111,8 +109,9 @@ package body Den.Walk is
                                      Child_Plain,
                                    when All_With_Dupes | All_Deduped =>
                                      Pseudocanonical (Child_Plain));
+               Child_Kind  : constant Kinds := Kind (Child_Plain);
             begin
-               if Kind (Child_Plain) = Nothing then
+               if Child_Kind = Nothing then
                   OS.Check_Not_Too_Long (Child_Plain);
                end if;
 
@@ -126,7 +125,7 @@ package body Den.Walk is
                   end if;
 
                   --  Match the fully resolved path
-                  if Filter.Match (Child) and then Visits (Child_Plain) then
+                  if Filter.Match (Child) and then Visits (Child_Kind) then
                      Action (This  => New_Item (Child, Depth),
                              Enter => Enter,
                              Stop  => Stop);
@@ -136,6 +135,8 @@ package body Den.Walk is
                      end if;
                   end if;
                end if;
+
+               --  Action may have changed the child, so look at it anew
 
                if Enter
                  and then
@@ -159,7 +160,9 @@ package body Den.Walk is
 
       if Target_Kind (This) = Directory then
          Enter_Dir (This, 1);
-      elsif Exists (This) and then Filter.Match (This) and then Visits (This)
+      elsif Exists (This)
+        and then Filter.Match (This)
+        and then Visits (Kind (This))
       then
          Action (New_Item (This, 0),
                  Enter => Enter,
