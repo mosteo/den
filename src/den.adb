@@ -1,5 +1,3 @@
---  with Ada.Directories;
-
 with Ada.Environment_Variables;
 with Ada.IO_Exceptions;
 
@@ -7,11 +5,8 @@ with Den.OS;
 
 with GNAT.IO;
 
-with System;
-
 package body Den is
 
-   --  package Dirs renames Ada.Directories;
    package IOex renames Ada.IO_Exceptions;
 
    -----------
@@ -26,7 +21,7 @@ package body Den is
       else
          Cached_Debug :=
            False
-           or else Ada.Environment_Variables.Exists ("DEN_DEBUG");
+           or else Ada.Environment_Variables.Exists (Debug_Flag);
          Cached_Debug_Valid := True;
          return Cached_Debug;
       end if;
@@ -41,7 +36,8 @@ package body Den is
    is
    begin
       if Debug then
-         GNAT.IO.Put_Line ("[DEN] " & Location & ": " & Message);
+         GNAT.IO.Put_Line
+           (GNAT.IO.Standard_Error, "[DEN] " & Location & ": " & Message);
       end if;
    end Log;
 
@@ -65,7 +61,9 @@ package body Den is
       ---------
 
       function "/" (L : Path; R : Relative_Path) return Path
-      is (if L (L'Last) = Dir_Separator
+      is (if Is_Dir_Separator (L (L'Last))
+            or else
+              (L'Length = 2 and then Prefix_Is_Drive (L, On_Windows))
           then L & R
           else L & Dir_Separator & R);
 
@@ -98,48 +96,207 @@ package body Den is
       end return;
    end Ancestors;
 
+   Device_Prefix_Length : constant := 4;
+   --  Of \\?\ and \\.\
+
+   -------------------
+   -- Prefix_Length --
+   -------------------
+
+   function Prefix_Length (This : String; Windows : Boolean) return Natural is
+      First : constant Integer := This'First;
+
+      function Is_Sep (Pos : Integer) return Boolean
+      is (Pos <= This'Last and then This (Pos) in '\' | '/');
+
+      function Has_Drive (Pos : Integer) return Boolean
+      is (Pos < This'Last
+          and then This (Pos + 1) = ':'
+          and then This (Pos) in 'a' .. 'z' | 'A' .. 'Z');
+
+      function Starts_With (Pos : Integer; Text : String) return Boolean
+      is (Pos + Text'Length - 1 <= This'Last
+          and then AAA.Strings.To_Lower_Case
+                     (This (Pos .. Pos + Text'Length - 1)) = Text);
+
+      -----------
+      -- After --
+      -----------
+
+      --  The position after the name starting at Pos, and its closing separator
+
+      function After (Pos : Integer) return Integer is
+         I : Integer := Pos;
+      begin
+         while I <= This'Last and then not Is_Sep (I) loop
+            I := I + 1;
+         end loop;
+
+         return (if I <= This'Last then I + 1 else I);
+      end After;
+
+      ------------------
+      -- Drive_Length --
+      ------------------
+
+      --  The length of the drive starting at Pos, with its separator if any
+
+      function Drive_Length (Pos : Integer) return Natural
+      is (if Is_Sep (Pos + 2) then 3 else 2);
+
+   begin
+      if not Windows then
+         return (if This'Length > 0 and then This (First) = '/' then 1 else 0);
+      end if;
+
+      --  \\?\ and \\.\, which only the former can be followed by a root
+
+      if This'Length >= Device_Prefix_Length
+        and then Is_Sep (First) and then Is_Sep (First + 1)
+        and then This (First + 2) in '?' | '.'
+        and then Is_Sep (First + 3)
+      then
+         declare
+            Rest : constant Integer := First + Device_Prefix_Length;
+            UNC  : constant String  := "unc\";
+         begin
+            if This (First + 2) = '.' then
+               return Device_Prefix_Length;
+            elsif Has_Drive (Rest) then
+               return Device_Prefix_Length + Drive_Length (Rest);
+            elsif Starts_With (Rest, UNC) then
+               return After (After (Rest + UNC'Length)) - First;
+            elsif Starts_With (Rest, "volume{") then
+               return After (Rest) - First;
+            else
+               return Device_Prefix_Length;
+            end if;
+         end;
+      end if;
+
+      --  \\server\share, or just \\ when incomplete
+
+      if Is_Sep (First) and then Is_Sep (First + 1) then
+         declare
+            Share : constant Integer := After (First + 2);
+         begin
+            return (if Share <= This'Last then After (Share) - First else 2);
+         end;
+      end if;
+
+      if Is_Sep (First) then
+         return 1;
+      elsif Has_Drive (First) then
+         return Drive_Length (First);
+      else
+         return 0;
+      end if;
+   end Prefix_Length;
+
+   ---------------------
+   -- Prefix_Is_Drive --
+   ---------------------
+
+   function Prefix_Is_Drive (This : String; Windows : Boolean) return Boolean
+   is (Prefix_Length (This, Windows) = 2 and then This (This'First + 1) = ':');
+
+   ------------------
+   -- Absolute_For --
+   ------------------
+
+   --  On Windows, the root \ and the drive C: depend on the current state
+
+   function Absolute_For (This : String; Windows : Boolean) return Boolean
+   is (if Windows
+       then Prefix_Length (This, Windows) > 1
+            and then not Prefix_Is_Drive (This, Windows)
+       else Prefix_Length (This, Windows) = 1);
+
+   ----------------
+   -- Split_Path --
+   ----------------
+
+   function Split_Path (This : String; Windows : Boolean)
+                        return AAA.Strings.Vector
+   is
+      Prefix   : constant Natural := Prefix_Length (This, Windows);
+      Verbatim : constant Boolean :=
+                   Windows and then Prefix >= Device_Prefix_Length
+                   and then This (This'First + 2) = '?';
+      Start    : Integer := This'First + Prefix;
+
+      function Is_Sep (Char : Character) return Boolean
+      is (if Windows
+          then Char = '\' or else (Char = '/' and then not Verbatim)
+          else Char = '/');
+
+      ------------
+      -- Native --
+      ------------
+
+      function Native (Root : String) return String
+      is (if Windows
+          then AAA.Strings.Replace (Root, "/", "\")
+               & (if Absolute_For (Root, Windows)
+                    and then Root (Root'Last) not in '\' | '/'
+                  then "\"
+                  else "")
+          else Root);
+
+   begin
+      return Result : AAA.Strings.Vector do
+         if Prefix > 0 then
+            Result.Append (Native (This (This'First .. Start - 1)));
+         end if;
+
+         for I in Start .. This'Last + 1 loop
+            if I > This'Last or else Is_Sep (This (I)) then
+               if I > Start then
+                  Result.Append (This (Start .. I - 1));
+               end if;
+               Start := I + 1;
+            end if;
+         end loop;
+      end return;
+   end Split_Path;
+
    --------------------
    -- String_Is_Root --
    --------------------
 
-   function String_Is_Root (This : String) return Boolean is
-      subtype Drive_Letter is Character with Dynamic_Predicate =>
-        Drive_Letter in 'a' .. 'z' | 'A' .. 'Z';
-   begin
-      return
-        This = "/"
-        or else
-          (Dir_Separator = '\' -- on Windows
-           and then
-             (This = "\"
-              or else
-                 This = "\\" -- UNC format
-              or else
-                 This = "\\?\"
-              or else
-                 This = "\\.\"
-              or else
-                (This'Length = 3
-                 and then This (This'Last - 1) = ':'
-                 and then This (This'Last) = '\'
-                 and then This (This'First) in Drive_Letter)
-              or else
-                (This'Length = 2
-                 and then This (This'Last) = ':'
-                 and then (This (This'First) in Drive_Letter))));
-   end String_Is_Root;
+   function String_Is_Root (This : String) return Boolean
+   is (This'Length > 0
+       and then Prefix_Length (This, On_Windows) = This'Length
+       and then not Prefix_Is_Drive (This, On_Windows));
 
    -----------------
    -- Is_Absolute --
    -----------------
 
    function Is_Absolute (This : Path) return Boolean
-   is (GNAT.OS_Lib.Is_Absolute_Path (This)
-       or else
-         --  Special case of Network/UNC Windows paths
-         (Dir_Separator = '\' and then
-          This'Length >= 2 and then
-          This (This'First .. This'First + 1) = "\\"));
+   is (Absolute_For (This, On_Windows));
+
+   -----------------
+   -- Is_Relative --
+   -----------------
+
+   function Is_Relative (This : String) return Boolean
+   is (Prefix_Length (This, On_Windows) = 0);
+
+   --------------
+   -- Has_Root --
+   --------------
+
+   function Has_Root (This : Path) return Boolean
+   is (not Is_Relative (This)
+       and then not Prefix_Is_Drive (This, On_Windows));
+
+   ----------------------
+   -- Is_Dir_Separator --
+   ----------------------
+
+   function Is_Dir_Separator (Char : Character) return Boolean
+   is (Char = Dir_Separator or else (On_Windows and then Char = '/'));
 
    -------------
    -- Is_Root --
@@ -153,10 +310,7 @@ package body Den is
    -----------------
 
    function Is_Softlink (This : Path) return Boolean
-   is
-   begin
-      return OS.Is_Softlink (This);
-   end Is_Softlink;
+   is (Kind (This) = Softlink);
 
    ---------------
    -- Can_Scrub --
@@ -174,33 +328,57 @@ package body Den is
    -- Canonical --
    ---------------
 
-   function Canonical (This : Existing_Path) return Canonical_Path
-   is (if OS_Canonical (This) = "" or else
-          OS_Canonical (This) not in Canonical_Path
-       then raise Bad_Path with
-         "Cannot canonicalize: " & This
-         & " [os_canonical: " & OS_Canonical (This) & "]"
-       else OS_Canonical (This));
+   function Canonical (This : Existing_Path) return Canonical_Path is
+      Result : constant String := Try_Canonical (This);
+   begin
+      if Result = "" then
+         raise Bad_Path with
+           "Cannot canonicalize: " & This
+           & " [os_canonical: " & OS_Canonical (This) & "]";
+      end if;
+
+      return Result;
+   end Canonical;
 
    -----------------
    -- Canonizable --
    -----------------
 
-   function Canonizable (This : String) return Boolean is
+   function Canonizable (This : String) return Boolean
+   is (Try_Canonical (This) /= "");
+
+   -------------------
+   -- Try_Canonical --
+   -------------------
+
+   function Try_Canonical (This : String) return String is
    begin
-      return Canonical (Scrub (This)) /= "";
+      if not Can_Scrub (This) then
+         return "";
+      end if;
+
+      declare
+         Result : constant String := OS_Canonical (Scrub (This));
+      begin
+         --  Not every OS resolves every link, as with loops on Windows or any
+         --  link under Wine, so check that it really did.
+         return (if Result /= "" and then Result in Canonical_Path
+                 then Result
+                 else "");
+      end;
    exception
-      when others =>
-         return False;
-   end Canonizable;
+      when Bad_Path => -- As with an embedded NUL
+         return "";
+   end Try_Canonical;
 
    --------------
    -- Eat_Dots --
    --------------
 
-   function Eat_Dots (This   :        Path;
-                      Parted : in out Path_Parts;
-                      I      : in out Integer)
+   function Eat_Dots (This        :        Path;
+                      Parted      : in out Path_Parts;
+                      I           : in out Integer;
+                      Drop_Excess :        Boolean := False)
                       return Boolean
    is
    begin
@@ -209,14 +387,22 @@ package body Den is
          return True;
       elsif Parted (I) = ".." then
          Parted.Delete (I);
-         if I = Parted.First_Index then
-            raise Bad_Path with
-              "Too many parents in path while normalizing: " & This;
-            --  At root, drop as if it where "."
+
+         --  There's nothing to go up from at the start of a relative path, or
+         --  after a root or drive
+
+         if I = Parted.First_Index
+           or else Prefix_Length (Parted (I - 1), On_Windows) > 0
+         then
+            if not Drop_Excess then
+               raise Bad_Path with
+                 "Too many parents in path while normalizing: " & This;
+            end if;
          else
             Parted.Delete (I - 1);
             I := I - 1;
          end if;
+
          return True;
       else
          return False;
@@ -229,44 +415,17 @@ package body Den is
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds
    is
-      -----------------
-      -- File_Exists --
-      -----------------
-      --  Original in a-direct.adb. We use this to avoid use of
-      --  non-preelaborable subprograms.
-      function File_Exists (Name : String) return Boolean is
-         function C_File_Exists (A : System.Address) return Integer;
-         pragma Import (C, C_File_Exists, "__gnat_file_exists");
-
-         C_Name : String (1 .. Name'Length + 1);
-
-      begin
-         C_Name (1 .. Name'Length) := Name;
-         C_Name (C_Name'Last) := ASCII.NUL;
-         return C_File_Exists (C_Name'Address) = 1;
-      end File_Exists;
-
-      package OS renames GNAT.OS_Lib;
-
+      Own_Kind : constant Kinds := OS.Kind_Of (This);
    begin
-      return
-        (if Resolve_Links then
-           (if Kind (This, Resolve_Links => False) /= Softlink then
-               Kind (This, Resolve_Links => False)
-            elsif OS_Canonical (This) /= "" then
-               Kind (OS_Canonical (This))
-            else
-               Nothing)
-         elsif Is_Softlink (This) then
-            Softlink
-         elsif not File_Exists (This) then
-            Nothing
-         elsif OS.Is_Directory (This) then
-            Directory
-         elsif OS.Is_Regular_File (This) then
-            File
-         else
-            Special);
+      if Resolve_Links and then Own_Kind = Softlink then
+         declare
+            Resolved : constant String := OS_Canonical (This);
+         begin
+            return (if Resolved = "" then Nothing else OS.Kind_Of (Resolved));
+         end;
+      else
+         return Own_Kind;
+      end if;
    end Kind;
 
    ----------
@@ -280,61 +439,24 @@ package body Den is
    -- Parent --
    ------------
 
-   function Parent (This : Path) return Path
-   is (if Is_Root (This) then
-          This
-       elsif This in Part then
-          raise IOex.Use_Error with "Path has no parent: " & This
-       else
-          Parts (This).Up_To (Integer (Parts (This).Length) - 1).To_Path);
+   function Parent (This : Path) return Path is
+      Parted : constant Path_Parts := Parts (This);
+   begin
+      if Is_Root (This) then
+         return This;
+      elsif Integer (Parted.Length) < 2 then
+         raise IOex.Use_Error with "Path has no parent: " & This;
+      else
+         return Parted.Up_To (Integer (Parted.Length) - 1).To_Path;
+      end if;
+   end Parent;
 
    -----------
    -- Parts --
    -----------
 
-   function Parts (This : Path) return Path_Parts is
-   begin
-      if Is_Root (This) then
-         return To_Vector (This);
-      end if;
-
-      return Result : Path_Parts do
-         --  Special cases for Windows
-         if Dir_Separator = '\' then
-            if AAA.Strings.Has_Prefix (This, "\\?\") then
-               Result :=
-                 To_Vector ("\\?\")
-                 & Split (This (This'First + 4 .. This'Last), Dir_Separator);
-            elsif AAA.Strings.Has_Prefix (This, "\\.\") then
-               Result :=
-                 To_Vector ("\\.\")
-                 & Split (This (This'First + 4 .. This'Last), Dir_Separator);
-            elsif AAA.Strings.Has_Prefix (This, "\\") then
-               Result :=
-                 To_Vector ("\\")
-                 & Split (This (This'First + 2 .. This'Last), Dir_Separator);
-            else
-               Result := Split (This, Dir_Separator);
-
-               --  Adjust for drive letter
-               if Is_Absolute (This) then
-                  Result.Replace_Element
-                    (Result.First_Index,
-                     Result.First_Element & Dir_Separator);
-               end if;
-            end if;
-         else
-            --  Sane UNIX paths
-            if Is_Absolute (This) then
-               Result :=
-                 To_Vector ("" & Dir_Separator)
-                 & Split (This (This'First + 1 .. This'Last), Dir_Separator);
-            else
-               Result := Split (This, Dir_Separator);
-            end if;
-         end if;
-      end return;
-   end Parts;
+   function Parts (This : Path) return Path_Parts
+   is (Split_Path (This, On_Windows) with null record);
 
    -------------
    -- Resolve --
@@ -346,12 +468,17 @@ package body Den is
          declare
             Link_Target : constant Path := Scrub (Target (This));
          begin
-            if Is_Absolute (Link_Target) then
+            if Is_Relative (Link_Target) then
+               return (if Has_Parent (This)
+                       then Parent (This) / Link_Target
+                       else Link_Target);
+            elsif Is_Absolute (Link_Target) or else not Has_Root (Link_Target)
+            then
                return Link_Target;
-            elsif Has_Parent (This) then
-               return Parent (This) / Link_Target;
             else
-               return Link_Target;
+               --  A rooted target is in the same drive as the link
+               return Root (OS.Full_Path (This))
+                 & Link_Target (Link_Target'First + 1 .. Link_Target'Last);
             end if;
          end;
       else
@@ -363,16 +490,8 @@ package body Den is
    -- Root --
    ----------
 
-   function Root (This : Absolute_Path) return Root_Path is
-   begin
-      for I in This'Range loop
-         if This (I) = Dir_Separator then
-            return This (This'First .. I);
-         end if;
-      end loop;
-
-      raise Program_Error with "Cannot find root in abs path: " & This;
-   end Root;
+   function Root (This : Absolute_Path) return Root_Path
+   is (Parts (This).First_Element);
 
    ------------
    -- Normal --
@@ -390,24 +509,24 @@ package body Den is
          end if;
       end loop;
 
+      if Parted.Is_Empty then
+         raise Bad_Path with "Nothing left after normalizing: " & This;
+      end if;
+
       return Parted.To_Path;
    end Normal;
 
-   -------------------
-   -- Canonical_Raw --
-   -------------------
-   --  Use OS-specific ways of obtaining a canonical path, resolving softlinks
-   --  if possible. In case of error (broken, recursive links?), it will return
-   --  "".
+   ------------------
+   -- OS_Canonical --
+   ------------------
+
    function OS_Canonical (This : Path) return String is
    begin
-      begin
-         return OS.Canonical (This);
-      exception
-         when Ada.IO_Exceptions.Use_Error =>
-            Log ("Cannot canonicalize path: " & This);
-            return "";
-      end;
+      return OS.Canonical (This);
+   exception
+      when Ada.IO_Exceptions.Use_Error =>
+         Log ("Cannot canonicalize path: " & This);
+         return "";
    end OS_Canonical;
 
    ------------------
@@ -429,7 +548,7 @@ package body Den is
       if not Is_Softlink (This) then
          raise Constraint_Error with "Not a softlink: " & This;
       end if;
-      return OS.Link_Length (This);
+      return OS.Link_Target (This)'Length;
    end Target_Length;
 
    ------------
@@ -467,26 +586,23 @@ package body Den is
 
    function Scrub (This : String) return Path is
       subtype LC_Drive is Character range 'a' .. 'z';
-      subtype UC_Drive is Character range 'A' .. 'Z';
-
-      --  Bad_Sep : constant Character :=
-      --              (case Dir_Separator is
-      --                  when '/' => '\',
-      --                  when '\' => '/',
-      --                  when others =>
-      --                    raise Program_Error with "Unsupported platform");
    begin
       --  Empty string
       if This = "" then
          raise Bad_Path with "Bad path: (empty)";
       end if;
 
-      --  Mixed separators
-      --  if (for some Char of This => Char = Bad_Sep) then
-      --     return
-      --       Scrub (AAA.Strings.Replace
-      --               (This, "" & Bad_Sep, "" & Dir_Separator));
-      --  end if;
+      --  Consistent drive letter
+      if On_Windows
+        and then This'Length >= 2
+        and then This (This'First + 1) = ':'
+        and then This (This'First) in LC_Drive
+      then
+         return Scrub (Character'Val (Character'Pos (This (This'First))
+                                      - Character'Pos ('a')
+                                      + Character'Pos ('A'))
+                       & This (This'First + 1 .. This'Last));
+      end if;
 
       --  Duplicated separators
       for I in This'Range loop
@@ -503,14 +619,8 @@ package body Den is
          end if;
       end loop;
 
-      --  Consistent drive letter
       if This in Root_Path then
-         if This (This'First) in LC_Drive then
-            return Scrub (UC_Drive'Val (LC_Drive'Pos (This (This'First)))
-                          & This (This'First + 1 .. This'Last));
-         else
-            return This;
-         end if;
+         return This;
       end if;
 
       --  Closing separator for non-root paths
@@ -520,8 +630,6 @@ package body Den is
 
       if This in Path then
          return This;
-      elsif This = "" then
-         raise Bad_Path with "Bad path: (empty)";
       else
          raise Bad_Path with "Bad path: " & This;
       end if;
@@ -534,10 +642,10 @@ package body Den is
    function To_Path (This : Path_Parts) return String
    is (if This.Is_Empty
        then ""
-       elsif Is_Root (This.First_Element) -- Already includes dir separator
+       elsif Integer (This.Length) = 1
        then This.First_Element
-            & This.Slice (This.First_Index + 1, This.Last_Index)
-                  .Flatten (Dir_Separator)
-       else This.Flatten (Dir_Separator));
+       else This.First_Element
+            / This.Slice (This.First_Index + 1, This.Last_Index)
+                  .Flatten (Dir_Separator));
 
 end Den;

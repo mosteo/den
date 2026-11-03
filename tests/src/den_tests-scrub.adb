@@ -1,3 +1,5 @@
+pragma Alire_Test;
+
 with Den; use Den;
 
 procedure Den_Tests.Scrub is

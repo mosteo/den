@@ -37,11 +37,14 @@ package Den.Du is
 
    function Is_Larger (This, Than : Item) return Boolean;
 
-   function List (Path     : Den.Path;
-                  Sort     : Sorting := Is_Larger'Access;
-                  Progress : access procedure (Exploring : String) := null)
+   function List (Path            : Den.Path;
+                  Sort            : Sorting := Is_Larger'Access;
+                  Progress        : access procedure (Exploring : String) := null;
+                  Skip_Unreadable : Boolean := False)
                   return Tree;
-   --  Default size is by decreasing size, alphabetical if same size
+   --  Default size is by decreasing size, alphabetical if same size. A directory
+   --  that cannot be read raises Use_Error, unless Skip_Unreadable, in which case
+   --  it counts as empty.
 
    procedure Print (This : Tree);
    --  Basic dump for debugging purposes mostly

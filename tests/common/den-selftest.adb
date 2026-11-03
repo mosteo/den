@@ -99,7 +99,8 @@ begin
       --  non-existent.
 
       --  Canonical path
-      pragma Assert (R in Canonical_Path);
+      pragma Assert ((R in Canonical_Path) = (Dir_Separator = '/'));
+      --  On Windows, that root depends on the current drive
       pragma Assert (Root (CWD) in Canonical_Path);
       pragma Assert (R / "asdf" not in Canonical_Path); -- non-existing
       pragma Assert (R / "." not in Canonical_Path);
@@ -375,10 +376,13 @@ begin
       for Canon in Boolean'Range loop
          --  Ls a couple of folders. We cannot simply ls "." as its contents
          --  change during testing and that causes race conditions.
-         for P of Ls ("cases", (Canonicalize => Canon)) loop
+         pragma Assert (not Ls (Cases, (Canonicalize => Canon, others => <>)).Is_Empty);
+         for P of Ls (Cases, (Canonicalize => Canon, others => <>)) loop
             pragma Assert (Is_Absolute (P) = Canon);
          end loop;
-         for P of Ls ("tests", (Canonicalize => Canon)) loop
+         pragma Assert
+           (not Ls (Cases / "links" / "g", (Canonicalize => Canon, others => <>)).Is_Empty);
+         for P of Ls (Cases / "links" / "g", (Canonicalize => Canon, others => <>)) loop
             pragma Assert (Is_Absolute (P) = Canon);
          end loop;
       end loop;
@@ -431,25 +435,32 @@ begin
 
    --  COPY
 
-   if Kind ("cases") = Directory then
-      Delete_Tree ("cases");
-   end if;
-   Mkdir ("cases");
-   Copy (Cases, "cases");
-   for Item of Walk.Find ("cases") loop
-      declare
-         Src : constant Path := Item.Path;
-         Dst : constant Path := ".." / Item.Path;
-      begin
-         pragma Assert
-           (Kind (Src) = Kind (Dst),
-            "item mismatch: " & Src
-            & " (" & Kind (Src)'Image & ") /= "
-            & Dst
-            & " (" & Kind (Dst)'Image & ")");
-      end;
-   end loop;
-   Delete_Tree ("cases");
+   declare
+      Copied : constant Path := "selftest_cases";
+      --  Not "cases", as tests run in parallel, and links with one ".." too
+      --  many in other tests must keep being broken.
+   begin
+      if Kind (Copied) = Directory then
+         Delete_Tree (Copied);
+      end if;
+      Mkdir (Copied);
+      Copy (Cases, Copied);
+      for Item of Walk.Find (Copied) loop
+         declare
+            Src : constant Path := Item.Path;
+            Dst : constant Path :=
+                    Cases / Src (Src'First + Copied'Length + 1 .. Src'Last);
+         begin
+            pragma Assert
+              (Kind (Src) = Kind (Dst),
+               "item mismatch: " & Src
+               & " (" & Kind (Src)'Image & ") /= "
+               & Dst
+               & " (" & Kind (Dst)'Image & ")");
+         end;
+      end loop;
+      Delete_Tree (Copied);
+   end;
    Put_Line ("OK copy");
 
    pragma Assert (not Timed_Out, "Timed out");

@@ -1,11 +1,6 @@
-with Ada.Unchecked_Deallocation;
-
-with GNAT.Directory_Operations;
---  with GNAT.IO; use GNAT.IO;
+with Den.OS;
 
 package body Den.Iterators is
-
-   package Ops renames GNAT.Directory_Operations;
 
    -------------
    -- Iterate --
@@ -20,49 +15,14 @@ package body Den.Iterators is
             --  a bug in GNAT 13.2 from Ubuntu 22.04 and to avoid a copy of
             --  these Items.
 
-            procedure Iterate is
-               Dir : Ops.Dir_Type;
-               type Path_Access is access String;
-               --  Predicate on Path gives trouble
-               procedure Free is
-                 new Ada.Unchecked_Deallocation (String, Path_Access);
-
-               Last  : Natural;
-               Max   : Positive := 1024;
+            procedure Add (Name : String) is
             begin
-               --  Try to read all dir elements; if insufficient buffer, try
-               --  again. Recursivity could be removed, but with exponential
-               --  grow wo cares..
-               loop
-                  declare
-                     Item : Path_Access := new Path (1 .. Max);
-                     function Read return Path is (Item (1 .. Last))
-                       with Inline;
-                  begin
-                     Ops.Open (Dir, This);
-                     loop
-                        Ops.Read (Dir, Item.all, Last);
-
-                        if Last = 0 then
-                           Ops.Close (Dir);
-                           Free (Item);
-                           return;
-                        elsif Last = Item'Last then
-                           --  Too small, restart
-                           Items.Clear;
-                           Max := Max * 2;
-                           Ops.Close (Dir);
-                           Free (Item);
-                           exit;
-                        elsif Read /= "." and then Read /= ".." then
-                           Items.Append (Item (Item'First .. Last));
-                        end if;
-                     end loop;
-                  end;
-               end loop;
-            end Iterate;
+               if Name /= "." and then Name /= ".." then
+                  Items.Append (Name);
+               end if;
+            end Add;
          begin
-            Iterate;
+            OS.List (This, Add'Access);
          end;
       end return;
    end Iterate;

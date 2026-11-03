@@ -1,10 +1,9 @@
-with Den.Iterators;
+with Den.OS;
+with Den.Walk;
 
 with GNAT.IO;
 
 package body Den.Du is
-
-   package Adirs renames Ada.Directories;
 
    Current_Sorting : Sorting := Is_Larger'Access;
 
@@ -29,9 +28,10 @@ package body Den.Du is
    -- List --
    ----------
 
-   function List (Path     : Den.Path;
-                  Sort     : Sorting := Is_Larger'Access;
-                  Progress : access procedure (Exploring : String) := null)
+   function List (Path            : Den.Path;
+                  Sort            : Sorting := Is_Larger'Access;
+                  Progress        : access procedure (Exploring : String) := null;
+                  Skip_Unreadable : Boolean := False)
                   return Tree
    is
 
@@ -46,14 +46,21 @@ package body Den.Du is
          end if;
 
          return Result : Tree do
-            for Name of Den.Iterators.Iterate (Path) loop
+            for Name of Den.Walk.Ls
+              (Path, (Skip_Unreadable => Skip_Unreadable, others => <>))
+            loop
                declare
                   use Den.Operators;
                   Child         : constant Den.Path := Path / Name;
+                  Child_Kind    : constant Kinds    := Den.Kind (Child);
                   Children      : Tree;
                   Children_Size : Sizes := 0;
                begin
-                  if Kind (Child) = Directory then
+                  if Child_Kind = Nothing then
+                     OS.Check_Not_Too_Long (Child);
+                  end if;
+
+                  if Child_Kind = Directory then
                      Children := List_Internal (Child);
                      for Child of Children loop
                         Children_Size := Children_Size + Child.Tree_Size;
@@ -63,11 +70,11 @@ package body Den.Du is
                   Result.Insert
                     (Du.Item'
                        (Path_Length   => Child'Length,
-                        Kind          => Den.Kind (Child),
+                        Kind          => Child_Kind,
                         Path          => Child,
                         Size          =>
-                          (case Den.Kind (Child) is
-                              when File      => Adirs.Size (Child),
+                          (case Child_Kind is
+                              when File      => Sizes (OS.File_Size (Child)),
                               when Softlink  =>
                                 Sizes (Den.Target_Length (Child)),
                               when others    => 0),
@@ -98,14 +105,9 @@ package body Den.Du is
             Root.Insert
               (Item'
                  (Path_Length   => Clean_Path'Length,
-                  Kind          => Den.Kind (Clean_Path),
+                  Kind          => Directory,
                   Path          => Clean_Path,
-                  Size          =>
-                    (case Den.Kind (Clean_Path) is
-                        when File      => Adirs.Size (Clean_Path),
-                        when Softlink  =>
-                          Sizes (Den.Target_Length (Clean_Path)),
-                        when others    => 0),
+                  Size          => 0,
                   Children_Size => Size,
                   Children      => Children));
          end;

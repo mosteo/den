@@ -1,3 +1,5 @@
+pragma Alire_Test;
+
 procedure Den_Tests.Assertions_Enabled is
 begin
    begin

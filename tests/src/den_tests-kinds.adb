@@ -1,6 +1,10 @@
+pragma Alire_Test;
+
+with Ada.Environment_Variables;
 with Ada.Text_IO;
 
 with Den;
+with Den.Filesystem;
 --  with Den.Informer;
 
 pragma Warnings (Off);
@@ -16,6 +20,29 @@ begin
    Assert (Kind (Cases) = Directory);
    Assert (Kind (Cases / "non-existent") = Nothing);
    Assert (Kind (Cases / "links" / "a") = File);
+
+   --  A path with an embedded NUL names nothing, and must not be cut short
+   Assert (Kind (Cases / "links" / ("a" & ASCII.NUL & "b")) = Nothing);
+   begin
+      Den.Filesystem.Link
+        ("kinds_nul" & ASCII.NUL & "link", "target",
+         Options => (Allow_Missing_Target => True, others => <>));
+      raise Program_Error with "Expected Bad_Path";
+   exception
+      when Bad_Path =>
+         null;
+   end;
+   Assert (Kind ("kinds_nul") = Nothing);
+
+   --  Tests with softlinks skip themselves if the checkout doesn't create them,
+   --  so make sure this is what is meant to happen where it is known
+
+   if Ada.Environment_Variables.Exists ("DEN_EXPECT_SOFTLINKS") then
+      Assert ((Kind ("canary") = Softlink)
+              = (Ada.Environment_Variables.Value ("DEN_EXPECT_SOFTLINKS")
+                 = "true"),
+              "Unexpected kind of canary: " & Kind ("canary")'Image);
+   end if;
 
    --  Skip this test if softlinks are not supported
    if Kind ("canary") /= Softlink then

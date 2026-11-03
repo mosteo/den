@@ -2,11 +2,11 @@ private with Ada.Containers.Indefinite_Doubly_Linked_Lists;
 
 package Den.Iterators is
 
-   --  RAII type over GNAT.Dir_Operations. It iterates over all directory
-   --  entries, including broken links and links to directories, so be wary to
-   --  skip as needed. "." and ".." are not iterated over. Order of iteration
-   --  is undefined. There is no limit on max name length. Names returned are
-   --  the base name directly stored in the directory.
+   --  It iterates over all directory entries, including broken links and links
+   --  to directories, so be wary to skip as needed. "." and ".." are not
+   --  iterated over. Order of iteration is undefined. Names returned are the
+   --  base name directly stored in the directory. Raises Use_Error if the
+   --  directory cannot be read.
 
    type Dir_Iterator (<>) is limited private with
      Iterable => (First       => First,

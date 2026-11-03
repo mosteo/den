@@ -1,11 +1,12 @@
+with Ada.IO_Exceptions;
+
 with Den.Filesystem; use Den.Filesystem;
 with Den.Iterators;
-
---  with GNAT.IO; use GNAT.IO;
+with Den.OS;
 
 package body Den.Walk is
 
-   package OS renames GNAT.OS_Lib;
+   use Operators;
 
    ----------
    -- Find --
@@ -22,6 +23,14 @@ package body Den.Walk is
 
       Visited : Sorted_Paths; -- For deduping
 
+      --  The real directories being entered, which is only needed when links
+      --  are followed, as they can lead back to one of them, or for deduping,
+      --  in which case they stay here after being done with.
+      Track_Entered : constant Boolean :=
+                        Options.Enter_Softlinked_Dirs
+                        or else Options.Canonicalize = All_Deduped;
+      Entered       : Sorted_Paths;
+
       Enter   : Boolean := True;
       Stop    : Boolean := False;
 
@@ -37,86 +46,127 @@ package body Den.Walk is
                  Depth  => Depth);
       end New_Item;
 
-      subtype Dir_Path is String with Dynamic_Predicate =>
-        Dir_Path (Dir_Path'Last) = Dir_Separator;
+      ------------
+      -- Visits --
+      ------------
+
+      --  Softlinks may be excluded from being reported, not from being entered
+
+      function Visits (Here : Kinds) return Boolean
+      is (Options.Visit_Softlinks or else Here /= Softlink);
+
+      procedure List (Dir : Path; Depth : Positive);
+
+      ---------------
+      -- Enter_Dir --
+      ---------------
+
+      procedure Enter_Dir (Dir : Path; Depth : Positive) is
+         Real : constant String :=
+                  (if Track_Entered then OS_Canonical (Dir) else "");
+      begin
+         if not Track_Entered then
+            List (Dir, Depth);
+
+         elsif Real /= "" and then not Entered.Contains (Real) then
+            Entered.Insert (Real);
+            List (Dir, Depth);
+
+            if Options.Canonicalize /= All_Deduped then
+               Entered.Delete (Real);
+            end if;
+         end if;
+      end Enter_Dir;
 
       ----------
-      -- Find --
+      -- List --
       ----------
 
-      procedure Find (Parent : Dir_Path; Depth : Positive) is
-         Dir  : constant Path := Parent (Parent'First .. Parent'Last - 1);
-         Base : constant Dir_Path :=
+      procedure List (Dir : Path; Depth : Positive) is
+         Base : constant Path :=
                   (if Options.Canonicalize /= None
-                   then Pseudocanonical (Dir) & OS.Directory_Separator
-                   else Parent);
+                   then Pseudocanonical (Dir)
+                   else Dir);
          Listed : constant Path :=
                     (if Kind (Dir) = Softlink then Canonical (Dir) else Dir);
          --  Ls of a softlink gives the link itself, so list its target when
          --  entering a softlinked dir (the start of the walk, or any one with
          --  Enter_Softlinked_Dirs). Children are still reported below Base.
       begin
-         for Item of Ls (Listed, (Canonicalize => False)) loop
+         for Item of Ls (Listed,
+                         (Canonicalize    => False,
+                          Skip_Unreadable => Options.Skip_Unreadable))
+         loop
             if Stop then
                return;
             end if;
 
             declare
-               Child_Plain : constant Path := Base & Item;
+               Child_Plain : constant Path := Base / Item;
                Child       : constant Path :=
                                (case Options.Canonicalize is
                                    when None | Den.Walk.Base         =>
-                                     Base & Item,
+                                     Child_Plain,
                                    when All_With_Dupes | All_Deduped =>
-                                     Pseudocanonical (Base & Item));
+                                     Pseudocanonical (Child_Plain));
+               Child_Kind  : constant Kinds := Kind (Child_Plain);
             begin
+               if Child_Kind = Nothing then
+                  OS.Check_Not_Too_Long (Child_Plain);
+               end if;
+
                Enter := True;
-               Stop  := False;
 
-               if Options.Canonicalize /= All_Deduped or else
-                 not Visited.Contains (Child)
+               if Options.Canonicalize /= All_Deduped
+                 or else not Visited.Contains (Child)
                then
-                  --  Match the fully resolved path
-                  if not Filter.Match (Child) then
-                     goto Continue;
-                  end if;
-
-                  Action (This  => New_Item (Child, Depth),
-                          Enter => Enter,
-                          Stop  => Stop);
-
-                  if Stop then
-                     return;
-                  end if;
-
                   if Options.Canonicalize = All_Deduped then
                      Visited.Insert (Child);
                   end if;
-               end if;
 
-               if Enter then
-                  if (Options.Enter_Regular_Dirs
-                      and then Kind (Child_Plain) = Directory)
-                    or else
-                      (Options.Enter_Softlinked_Dirs
-                       and then Target_Kind (Child_Plain) = Directory)
-                  then
-                     Find (Child_Plain & OS.Directory_Separator, Depth + 1);
+                  --  Match the fully resolved path
+                  if Filter.Match (Child) and then Visits (Child_Kind) then
+                     Action (This  => New_Item (Child, Depth),
+                             Enter => Enter,
+                             Stop  => Stop);
+
+                     if Stop then
+                        return;
+                     end if;
                   end if;
                end if;
-            end;
 
-            <<Continue>>
+               --  Action may have changed the child, so look at it anew
+
+               if Enter
+                 and then
+                   ((Options.Enter_Regular_Dirs
+                     and then Kind (Child_Plain) = Directory)
+                    or else
+                      (Options.Enter_Softlinked_Dirs
+                       and then Kind (Child_Plain) = Softlink
+                       and then Target_Kind (Child_Plain) = Directory))
+               then
+                  Enter_Dir (Child_Plain, Depth + 1);
+               end if;
+            end;
          end loop;
-      end Find;
+      end List;
 
    begin
-      if Target_Kind (This) /= Directory and then Filter.Match (This) then
+      if Kind (This) = Nothing then
+         OS.Check_Not_Too_Long (This);
+      end if;
+
+      if Target_Kind (This) = Directory then
+         Enter_Dir (This, 1);
+      elsif Exists (This)
+        and then Filter.Match (This)
+        and then Visits (Kind (This))
+      then
          Action (New_Item (This, 0),
                  Enter => Enter,
                  Stop  => Stop);
-      else
-         Find (This & OS.Directory_Separator, 1);
       end if;
    end Find;
 
@@ -164,23 +214,24 @@ package body Den.Walk is
       -- Insert --
       ------------
 
-      procedure Insert (This : Path; Into : in out Sorted_Paths) is
-         use Operators;
+      --  Name is what is reported, unless canonicalizing the Full path to it
+
+      procedure Insert (Name, Full : Path; Into : in out Sorted_Paths) is
       begin
          if Options.Canonicalize then
             declare
-               Canonical : constant Path := OS_Canonical (Ls.This / This);
+               Canonical : constant String := OS_Canonical (Full);
             begin
                if Canonical /= "" then
                   --  Resolved links may point to the same file
                   Into.Include (Canonical);
                else
                   raise Bad_Path with
-                    "Cannot find canonical path for: " & (Ls.This / This);
+                    "Cannot find canonical path for: " & Full;
                end if;
             end;
          else
-            Into.Insert (This);
+            Into.Insert (Name);
          end if;
       end Insert;
 
@@ -188,15 +239,23 @@ package body Den.Walk is
       return Result : Sorted_Paths do
          case Kind (This) is
             when Nothing =>
+               OS.Check_Not_Too_Long (This);
                return;
 
             when Childless_Kinds =>
-               Insert (This, Into => Result);
+               Insert (This, This, Into => Result);
 
             when Directory =>
-               for Item of Iterators.Iterate (This) loop
-                  Insert (Item, Into => Result);
-               end loop;
+               begin
+                  for Item of Iterators.Iterate (This) loop
+                     Insert (Item, This / Item, Into => Result);
+                  end loop;
+               exception
+                  when Ada.IO_Exceptions.Use_Error =>
+                     if not Options.Skip_Unreadable then
+                        raise;
+                     end if;
+               end;
          end case;
       end return;
    end Ls;

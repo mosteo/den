@@ -1,3 +1,5 @@
+pragma Alire_Test;
+
 with Den.Selftest;
 
 procedure Den_Tests.Selftests is

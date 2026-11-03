@@ -23,12 +23,15 @@ jobs:
                   - {os: macos-15-intel,   v: ^15}
                   - {os: macos-15-intel,   v: ""}
 
-                  # Not macos-latest (macos-26): since runner image 20261013,
-                  # its SDK's libSystem.tbd lists arm64e.x1, which the GNAT
-                  # linker rejects. Update when GNAT is fixed.
                   - {os: macos-15,         v: ^14}
                   - {os: macos-15,         v: ^15}
                   - {os: macos-15,         v: ""}
+
+                  # Latest GNAT only. Some images of these runners default to
+                  # the 27 SDK, whose libSystem.tbd lists arm64e.x1, which GNAT
+                  # linkers reject. See the step below.
+                  - {os: macos-26-intel,   v: ""}
+                  - {os: macos-26,         v: ""}
 
                   - {os: ubuntu-22.04,     v: ^10}
                   - {os: ubuntu-22.04,     v: ^11}
@@ -50,18 +53,35 @@ jobs:
                   - {os: ubuntu-24.04-arm, v: ^15}
                   - {os: ubuntu-24.04-arm, v: ""}
 
-                  - {os: windows-latest,   v: ^10}
-                  - {os: windows-latest,   v: ^11}
-                  - {os: windows-latest,   v: ^12}
-                  - {os: windows-latest,   v: ^13}
-                  - {os: windows-latest,   v: ^14}
-                  - {os: windows-latest,   v: ^15}
-                  - {os: windows-latest,   v: ""}
+                  - {os: ubuntu-26.04,     v: ^14}
+                  - {os: ubuntu-26.04,     v: ^15}
+                  - {os: ubuntu-26.04,     v: ""}
+
+                  - {os: ubuntu-26.04-arm, v: ^14}
+                  - {os: ubuntu-26.04-arm, v: ^15}
+                  - {os: ubuntu-26.04-arm, v: ""}
+
+                  - {os: windows-2025,     v: ^10}
+                  - {os: windows-2025,     v: ^11}
+                  - {os: windows-2025,     v: ^12}
+                  - {os: windows-2025,     v: ^13}
+                  - {os: windows-2025,     v: ^14}
+                  - {os: windows-2025,     v: ^15}
+                  - {os: windows-2025,     v: ""}
                 soft: [true, false]
 
         steps:
             - name: Enable/disable softlinks support in git
               run: git config --global core.symlinks ${{ matrix.soft }}
+
+            - name: Use the 26 SDK if available, as GNAT can't link with the 27
+              if: startsWith(matrix.combo.os, 'macos-26')
+              shell: bash
+              run: |
+                  sdks=/Library/Developer/CommandLineTools/SDKs
+                  if [ -d "$sdks/MacOSX26.sdk" ]; then
+                      sudo ln -sfn MacOSX26.sdk "$sdks/MacOSX.sdk"
+                  fi
 
             - name: Check out den
               uses: actions/checkout@v2
@@ -89,5 +109,7 @@ jobs:
 
             - name: Test
               shell: bash
+              env:
+                  DEN_EXPECT_SOFTLINKS: ${{ matrix.soft }}
               run: |
                   alr test

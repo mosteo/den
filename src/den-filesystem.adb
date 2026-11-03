@@ -34,9 +34,12 @@ package body Den.Filesystem is
    --------------
 
    function Absolute (This : Path) return Absolute_Path
-   is (if Is_Absolute (This)
-       then This
-       else Current_Dir / This);
+   is (if Is_Absolute (This) then
+          This
+       elsif Is_Relative (This) then
+          Current_Dir / This
+       else
+          OS.Full_Path (This));
 
    ----------
    -- Copy --
@@ -46,151 +49,258 @@ package body Den.Filesystem is
                    Options  : Copy_Options := (others => <>))
    is
 
-      ---------------
-      -- Copy_File --
-      ---------------
+      Active : Sorted_Paths;
+      --  The real directories being copied when following links, which can
+      --  lead back to one of them.
 
-      procedure Copy_File is
+      -------------------
+      -- Delete_Target --
+      -------------------
+
+      --  Before overwriting, as they may be the same under different names
+
+      procedure Delete_Target (Src, Dst : Path) is
+         Real_Src : constant String := Try_Canonical (Src);
       begin
-         case Kind (Dst) is
-            when Nothing =>
-               Dirs.Copy_File (Src, Dst);
-               Copy_Attributes (Src, Dst,
-                                Timestamps  => Options.Preserve_Timestamps,
-                                Permissions => Options.Preserve_Permissions);
-            when Directory =>
-               Copy (Src, Dst / Name (Src), Options);
-            when File =>
-               if Options.Overwrite_Files then
-                  Dirs.Delete_File (Dst);
-                  Copy_File;
-               else
-                  raise Use_Error with
-                    Error ("not overwriting exising target: " & Dst);
-               end if;
-            when Softlink | Special =>
-               raise Use_Error with
-                 Error ("not overwriting existing link/special target: "
-                        & Dst);
-         end case;
-      end Copy_File;
+         if Real_Src /= "" and then Real_Src = Try_Canonical (Dst) then
+            raise Use_Error with
+              Error ("source and destination are the same: "
+                     & Src & ", " & Dst);
+         end if;
 
-      --------------
-      -- Copy_Dir --
-      --------------
+         OS.Delete_File (Dst);
+      end Delete_Target;
 
-      procedure Copy_Dir is
-      begin
-         case Kind (Dst) is
-            when Nothing =>
-               raise Name_Error with
-                 Error ("non-existent destination: " & Dst);
-            when File | Softlink | Special =>
-               raise Use_Error with
-                 Error ("not overwriting existing target (" & Kind (Dst)'Image
-                        & "): " & Dst);
-            when Directory =>
-               if not Options.Merge_Dirs and then
-                 Walk.Ls (Dst).Length not in 0
-               then
-                  raise Use_Error with
-                    Error ("not merging (disabled) into existing target: "
-                           & Dst);
-               end if;
-         end case;
+      ---------------
+      -- Copy_Item --
+      ---------------
 
-         --  Actually copy/merge
+      procedure Copy_Item (Src, Dst : Path) is
 
-         for Item of Iterators.Iterate (Src) loop
-            case Kind (Src / Item) is
+         ---------------
+         -- Copy_File --
+         ---------------
+
+         procedure Copy_File is
+         begin
+            case Kind (Dst) is
                when Nothing =>
-                  raise Program_Error with Error ("item missing?: "
-                                                  & (Src / Item));
-               when Directory =>
-                  if Kind (Dst / Item) = Nothing then
-                     Dirs.Create_Directory (Dst / Item);
+                  --  The runtime can't deal with long paths on Windows
+                  if On_Windows then
+                     OS.Copy_File (Src, Dst);
+                  else
+                     Dirs.Copy_File (Src, Dst);
                   end if;
-                  Copy (Src / Item, Dst / Item);
 
-               when others =>
-                  Copy (Src / Item, Dst);
-            end case;
-         end loop;
-
-         --  Fix permissions if requested
-
-         Copy_Attributes (Src, Dst,
-                          Timestamps  => Options.Preserve_Timestamps,
-                          Permissions => Options.Preserve_Permissions);
-      end Copy_Dir;
-
-      ---------------
-      -- Copy_Link --
-      ---------------
-
-      procedure Copy_Link is
-      begin
-         case Kind (Dst) is
-            when Nothing =>
-               null; -- done below
-            when Directory =>
-               Copy (Src, Dst / Name (Src));
-               return;
-            when File =>
-               if Options.Overwrite_Files then
-                  Dirs.Delete_File (Dst);
-                  --  Copy done below
-               else
+                  Copy_Attributes
+                    (Src, Dst,
+                     Timestamps  => Options.Preserve_Timestamps,
+                     Permissions => Options.Preserve_Permissions);
+               when Directory =>
+                  Copy_Item (Src, Dst / Name (Src));
+               when File =>
+                  if Options.Overwrite_Files then
+                     Delete_Target (Src, Dst);
+                     Copy_File;
+                  else
+                     raise Use_Error with
+                       Error ("not overwriting exising target: " & Dst);
+                  end if;
+               when Softlink | Special =>
                   raise Use_Error with
-                  Error ("not overwriting exising target: " & Dst);
+                    Error ("not overwriting existing link/special target: "
+                           & Dst);
+            end case;
+         end Copy_File;
+
+         --------------
+         -- Copy_Dir --
+         --------------
+
+         procedure Copy_Dir is
+            Real : constant String :=
+                     (if Options.Resolve_Links then Canonical (Src) else "");
+         begin
+            case Kind (Dst) is
+               when Nothing =>
+                  raise Name_Error with
+                    Error ("non-existent destination: " & Dst);
+               when File | Softlink | Special =>
+                  raise Use_Error with
+                    Error ("not overwriting existing target ("
+                           & Kind (Dst)'Image & "): " & Dst);
+               when Directory =>
+                  if not Options.Merge_Dirs and then
+                    Walk.Ls (Dst).Length not in 0
+                  then
+                     raise Use_Error with
+                       Error ("not merging (disabled) into existing target: "
+                              & Dst);
+                  end if;
+            end case;
+
+            if Options.Resolve_Links then
+               if Active.Contains (Real) then
+                  raise Use_Error with
+                    Error ("links lead back to a folder being copied: "
+                           & Src);
                end if;
-            when Softlink | Special =>
-               raise Use_Error with
-                 Error ("not overwriting existing link/special target: "
-                        & Dst);
+
+               Active.Insert (Real);
+            end if;
+
+            --  Actually copy/merge
+
+            for Item of Iterators.Iterate (Src) loop
+               case Kind (Src / Item) is
+                  when Nothing =>
+                     OS.Check_Not_Too_Long (Src / Item);
+                     raise Program_Error with Error ("item missing?: "
+                                                     & (Src / Item));
+                  when Directory =>
+                     if Kind (Dst / Item) = Nothing then
+                        OS.Create_Directory (Dst / Item);
+                     end if;
+
+                  when others =>
+                     null;
+               end case;
+
+               Copy_Item (Src / Item, Dst / Item);
+            end loop;
+
+            if Options.Resolve_Links then
+               Active.Delete (Real);
+            end if;
+
+            --  Fix permissions if requested
+
+            Copy_Attributes (Src, Dst,
+                             Timestamps  => Options.Preserve_Timestamps,
+                             Permissions => Options.Preserve_Permissions);
+         end Copy_Dir;
+
+         ---------------
+         -- Copy_Link --
+         ---------------
+
+         procedure Copy_Link is
+         begin
+            case Kind (Dst) is
+               when Nothing =>
+                  null; -- done below
+               when Directory =>
+                  Copy_Item (Src, Dst / Name (Src));
+                  return;
+               when File =>
+                  if Options.Overwrite_Files then
+                     Delete_Target (Src, Dst);
+                     --  Copy done below
+                  else
+                     raise Use_Error with
+                     Error ("not overwriting exising target: " & Dst);
+                  end if;
+               when Softlink | Special =>
+                  raise Use_Error with
+                    Error ("not overwriting existing link/special target: "
+                           & Dst);
+            end case;
+
+            --  Here we recreate the link. Target might not yet be in place.
+            OS.Copy_Link (Source => Src, Name => Dst);
+         end Copy_Link;
+
+         ----------------------
+         -- Copy_Link_Target --
+         ----------------------
+
+         --  What a link points to is copied as if it were here. A file keeps
+         --  the name of the link, and a folder has its contents go into Dst, as
+         --  any other folder, which we create if needed.
+
+         procedure Copy_Link_Target (Real : Path) is
+         begin
+            if Kind (Real) = Directory then
+               if Kind (Dst) = Nothing then
+                  OS.Create_Directory (Dst);
+               end if;
+               Copy_Item (Real, Dst);
+            elsif Kind (Dst) = Directory then
+               Copy_Item (Real, Dst / Name (Src));
+            else
+               Copy_Item (Real, Dst);
+            end if;
+         end Copy_Link_Target;
+
+         ------------------
+         -- Copy_Special --
+         ------------------
+
+         procedure Copy_Special is
+         begin
+            raise Use_Error with Error ("cannot copy special file: " & Src);
+         end Copy_Special;
+
+      begin
+         if Debug then
+            Log ("Copy " & Src & P (Kind (Src)'Image)
+                 & " --> "
+                 & Dst & " ...");
+         end if;
+
+         case Kind (Src) is
+            when Nothing =>
+               OS.Check_Not_Too_Long (Src);
+               raise Name_Error with Error ("non-existent source: " & Src);
+            when File =>
+               Copy_File;
+            when Directory =>
+               Copy_Dir;
+            when Softlink =>
+               declare
+                  Real : constant String :=
+                           (if Options.Resolve_Links
+                            then Try_Canonical (Src)
+                            else "");
+               begin
+                  if Real /= "" then
+                     Copy_Link_Target (Real);
+                  else
+                     Copy_Link;
+                  end if;
+               end;
+            when Special =>
+               Copy_Special;
          end case;
 
-         --  Here we recreate the link. Target might not yet be in place.
-         OS.Create_Link
-           (Name   => Dst,
-            Target => Target (Src),
-            Is_Dir => Kind (Src, Resolve_Links => True) = Directory);
-      end Copy_Link;
-
-      ------------------
-      -- Copy_Special --
-      ------------------
-
-      procedure Copy_Special is
-      begin
-         raise Use_Error with Error ("cannot copy special file: " & Src);
-      end Copy_Special;
+         if Debug then
+            Log ("Copy " & Src & P (Kind (Src)'Image)
+                 & " --> "
+                 & Dst & P (Kind (Dst)'Image) & " OK");
+         end if;
+      end Copy_Item;
 
    begin
-      Log ("Copy " & Src & P (Kind (Src)'Image)
-           & " --> "
-           & Dst & " ...");
+      --  A folder can't go into itself. Nothing is done before finding out.
 
-      case Kind (Src) is
-         when Nothing =>
-            raise Name_Error with Error ("non-existent source: " & Src);
-         when File =>
-            Copy_File;
-         when Directory =>
-            Copy_Dir;
-         when Softlink =>
-            if Options.Resolve_Links and then Canonizable (Src) then
-               Copy (Target (Src), Dst);
-            else
-               Copy_Link;
+      if Kind (Src) = Directory
+        or else (Options.Resolve_Links and then Target_Kind (Src) = Directory)
+      then
+         declare
+            Real_Src : constant Path := Canonical (Src);
+            Real_Dst : constant Path := Pseudocanonical (Dst);
+         begin
+            if Real_Dst = Real_Src
+              or else Ancestors (Real_Dst).Contains (Real_Src)
+            then
+               raise Use_Error with
+                 Error ("cannot copy a folder into itself: "
+                        & Src & " --> " & Dst);
             end if;
-         when Special =>
-            Copy_Special;
-      end case;
+         end;
+      end if;
 
-      Log ("Copy " & Src & P (Kind (Src)'Image)
-           & " --> "
-           & Dst & P (Kind (Dst)'Image) & " OK");
+      Copy_Item (Src, Dst);
    end Copy;
 
    ---------------------
@@ -204,6 +314,12 @@ package body Den.Filesystem is
       OK : Boolean := False;
    begin
       if not (Permissions or else Timestamps) then
+         return;
+      end if;
+
+      --  The runtime can't deal with long paths on Windows
+      if On_Windows then
+         OS.Copy_Attributes (Src, Dst, Permissions, Timestamps);
          return;
       end if;
 
@@ -236,6 +352,23 @@ package body Den.Filesystem is
      (Target           : Path;
       Options          : Create_Directory_Options := (others => <>))
    is
+
+      -----------------
+      -- Create_Path --
+      -----------------
+
+      procedure Create_Path (This : Path) is
+      begin
+         if Has_Parent (This) and then Kind (Parent (This)) = Nothing then
+            Create_Path (Parent (This));
+         end if;
+
+         --  It may exist by now, if it goes through a ".."
+         if Kind (This) = Nothing then
+            OS.Create_Directory (This);
+         end if;
+      end Create_Path;
+
    begin
       case Target_Kind (Target) is
          when Directory =>
@@ -247,9 +380,9 @@ package body Den.Filesystem is
             end if;
          when Nothing =>
             if Options.Create_Intermediate then
-               Dirs.Create_Path (Target);
+               Create_Path (Target);
             else
-               Dirs.Create_Directory (Target);
+               OS.Create_Directory (Target);
             end if;
          when others =>
             raise Use_Error
@@ -264,7 +397,7 @@ package body Den.Filesystem is
    -----------------
 
    function Current_Dir return Path
-   is (Dirs.Current_Directory);
+   is (Scrub (OS.Current_Dir));
 
    ----------------------
    -- Delete_Directory --
@@ -275,45 +408,46 @@ package body Den.Filesystem is
       Options : Delete_Directory_Options := (others => <>))
    is
    begin
-      Log ("deleting: " & This & P (Kind (This)'Image) & " ...");
-
-      --  Diagnostics
+      if Debug then
+         Log ("deleting: " & This & P (Kind (This)'Image) & " ...");
+      end if;
 
       case Kind (This) is
          when Nothing =>
+            OS.Check_Not_Too_Long (This);
+
+            --  A tree might be already gone, or parts of it by the time we
+            --  get to them, but nothing has to be done in that case.
             if not Options.Recursive then
                raise Name_Error with
                Error ("target does not exist: " & This);
             end if;
-         when File | Softlink =>
+
+         when Directory =>
+            if Options.Recursive then
+               for Item of Iterators.Iterate (This) loop
+                  Delete_Directory (This / Item, Options);
+               end loop;
+            end if;
+
+            --  Otherwise, this fails if not empty, without having touched it
+            OS.Remove_Directory (This);
+
+         when File | Softlink | Special =>
             if not Options.Recursive then
                raise Use_Error with
                Error ("target kind is not deletable without recursive: "
                       & This & P (Kind (This)'Image));
+            elsif Kind (This) = Special then
+               OS.Delete_File (This);
+            else
+               Delete_File (This, Options.Delete_Files);
             end if;
-         when Special =>
-            raise Use_Error with
-            Error ("target kind is not deletable: "
-                   & This & P (Kind (This)'Image));
-         when Directory =>
-            null;
       end case;
 
-      --  Actual deletion
-
-      case Kind (This) is
-         when Directory =>
-            for Item of Iterators.Iterate (This) loop
-               Delete_Directory (This / Item, Options);
-            end loop;
-            Dirs.Delete_Directory (This); -- Should be empty now
-         when File | Softlink =>
-            Delete_File (This, Options.Delete_Files);
-         when others =>
-            raise Program_Error with Error ("should be unreachable");
-      end case;
-
-      Log ("deleting: " & This & P (Kind (This)'Image) & " OK");
+      if Debug then
+         Log ("deleting: " & This & P (Kind (This)'Image) & " OK");
+      end if;
    end Delete_Directory;
 
    ----------
@@ -323,23 +457,37 @@ package body Den.Filesystem is
    procedure Link (From, Target : Path;
                    Options      : Link_Options := (others => <>))
    is
-      Abs_Target : constant Path :=
-        (if Is_Absolute (Target) then
-            Target
-         else
-            Absnormal (Parent (Absnormal (From)) / Target));
+      --  Where the link really is, which is what a relative target starts from
+      --  and not what the path says if it goes through another link.
+      Real_Parent : constant Path :=
+                      Pseudocanonical (Parent (Absolute (From)));
 
-      Rel_Target : constant Path :=
-         (if Options.Relative_Target_From_Absolute_Path then
-               Relative (Parent (Absolute (From)), Abs_Target)
-          else
-               Abs_Target);
+      Abs_Target : constant Path :=
+        (if Is_Relative (Target) then
+            Real_Parent / Target
+         else
+            Target);
+
+      ----------------
+      -- Rel_Target --
+      ----------------
+
+      function Rel_Target return Path is
+      begin
+         return Relative (Real_Parent, Abs_Target);
+      exception
+         when Bad_Operation =>
+            return Dots_Current_Dir; -- The target is the parent of the link
+      end Rel_Target;
+
    begin
-      Log ("linking: " & From
-           & " --> "
-           & Target
-           & P ("absolute target: " & Abs_Target & P (Kind (Abs_Target)'Image))
-           & " ...");
+      if Debug then
+         Log ("linking: " & From
+              & " --> "
+              & Target
+              & P ("absolute target: " & Abs_Target & P (Kind (Abs_Target)'Image))
+              & " ...");
+      end if;
 
       --  Divert if the relative path safety is enabled
       if Options.Relative_Target_From_Absolute_Path then
@@ -365,17 +513,13 @@ package body Den.Filesystem is
          end if;
       end if;
 
-      if Kind (From) /= Nothing then
-         if Options.Overwrite_Existing and then Kind (From) = Softlink
-         then
-            Delete_File (From,
-               (Delete_Softlinks => Delete_Link, others => <>));
-         else
-               --  We don't want to overwrite an existing link
-            raise Use_Error with
-               Error ("item at new link path already exists: " & From &
-                        " (kind: " & Kind (From)'Image & ")");
-         end if;
+      if Kind (From) /= Nothing
+        and then not (Options.Overwrite_Existing and then Kind (From) = Softlink)
+      then
+         --  We don't want to overwrite an existing link
+         raise Use_Error with
+            Error ("item at new link path already exists: " & From &
+                     " (kind: " & Kind (From)'Image & ")");
       end if;
 
       if Kind (Abs_Target) = Nothing and then not Options.Allow_Missing_Target
@@ -384,16 +528,24 @@ package body Den.Filesystem is
            Error ("target does not exist: " & Abs_Target);
       end if;
 
+      --  Only now that nothing can stop the new link for those reasons
+
+      if Kind (From) /= Nothing then
+         Delete_File (From, (Delete_Softlinks => Delete_Link, others => <>));
+      end if;
+
       OS.Create_Link (Target => Target,
                       Name   => From,
-                      Is_Dir => Kind (Abs_Target) = Directory);
+                      Is_Dir => Target_Kind (Abs_Target) = Directory);
 
       pragma Assert (Kind (From) = Softlink,
                      "link not created: " & From & P (Kind (From)'Image));
 
-      Log ("linking: " & From & P (Kind (From)'Image)
-           & " --> "
-           & Target & P (Kind (Target)'Image) & " OK");
+      if Debug then
+         Log ("linking: " & From & P (Kind (From)'Image)
+              & " --> "
+              & Target & P (Kind (Target)'Image) & " OK");
+      end if;
    end Link;
 
    -----------
@@ -402,7 +554,9 @@ package body Den.Filesystem is
 
    procedure Unlink (This : Path) is
    begin
-      Log ("unlinking: " & This & P (Kind (This)'Image) & " ...");
+      if Debug then
+         Log ("unlinking: " & This & P (Kind (This)'Image) & " ...");
+      end if;
 
       if Kind (This) /= Softlink then
          raise Use_Error with
@@ -412,7 +566,9 @@ package body Den.Filesystem is
 
       OS.Delete_Link (This);
 
-      Log ("unlinking: " & This & P (Kind (This)'Image) & " OK");
+      if Debug then
+         Log ("unlinking: " & This & P (Kind (This)'Image) & " OK");
+      end if;
    end Unlink;
 
    -----------------
@@ -432,8 +588,10 @@ package body Den.Filesystem is
          if Kind (Target_Path) = File then
             Delete_File (Target_Path, Options);
          elsif Options.Do_Not_Fail then
-            Log ("skipping non-file target: " & Target_Path &
-                 " (kind: " & Kind (Target_Path)'Image & ")");
+            if Debug then
+               Log ("skipping non-file target: " & Target_Path &
+                    " (kind: " & Kind (Target_Path)'Image & ")");
+            end if;
          else
             raise Use_Error with
               Error ("target is not a regular file: " & Target_Path &
@@ -442,10 +600,14 @@ package body Den.Filesystem is
       end Delete_Target_If_Regular_File;
 
    begin
-      Log ("deleting file: " & This & P (Kind (This)'Image) & " ...");
+      if Debug then
+         Log ("deleting file: " & This & P (Kind (This)'Image) & " ...");
+      end if;
 
       case Kind (This) is
          when Nothing =>
+            OS.Check_Not_Too_Long (This);
+
             if Options.Do_Not_Fail then
                Log ("skipping non-existent file: " & This);
                return;
@@ -462,35 +624,43 @@ package body Den.Filesystem is
                  Error ("target is directory, use Delete_Directory: " & This);
             end if;
          when File =>
-            Dirs.Delete_File (This);
+            OS.Delete_File (This);
          when Softlink =>
-            case Options.Delete_Softlinks is
-               when Fail =>
-                  raise Use_Error with
-                    Error ("target is a softlink, use Unlink: " & This);
-               when Delete_Link =>
-                  Unlink (This);
-               when Delete_Target =>
-                  if Canonizable (This) then
-                     Delete_Target_If_Regular_File (Canonical (This));
-                  elsif Options.Do_Not_Fail then
-                     Log ("skipping unresolvable link target: " & This);
-                  else
+            declare
+               Real : constant String :=
+                        (if Options.Delete_Softlinks in Delete_Target
+                                                      | Delete_Both
+                         then Try_Canonical (This)
+                         else "");
+            begin
+               case Options.Delete_Softlinks is
+                  when Fail =>
                      raise Use_Error with
-                       Error ("cannot delete target: " & Target (This)
-                              & " of unresolvable link: "
-                              & This);
-                  end if;
-               when Delete_Both =>
-                  if Canonizable (This) then
-                     Delete_Target_If_Regular_File (Canonical (This));
-                  elsif not Options.Do_Not_Fail then
-                     raise Use_Error with
-                       Error ("cannot delete target of unresolvable link: "
-                              & This);
-                  end if;
-                  Unlink (This);
-            end case;
+                       Error ("target is a softlink, use Unlink: " & This);
+                  when Delete_Link =>
+                     Unlink (This);
+                  when Delete_Target =>
+                     if Real /= "" then
+                        Delete_Target_If_Regular_File (Real);
+                     elsif Options.Do_Not_Fail then
+                        Log ("skipping unresolvable link target: " & This);
+                     else
+                        raise Use_Error with
+                          Error ("cannot delete target: " & Target (This)
+                                 & " of unresolvable link: "
+                                 & This);
+                     end if;
+                  when Delete_Both =>
+                     if Real /= "" then
+                        Delete_Target_If_Regular_File (Real);
+                     elsif not Options.Do_Not_Fail then
+                        raise Use_Error with
+                          Error ("cannot delete target of unresolvable link: "
+                                 & This);
+                     end if;
+                     Unlink (This);
+               end case;
+            end;
          when Special =>
             if Options.Do_Not_Fail then
                Log ("skipping special file: " & This);
@@ -501,7 +671,9 @@ package body Den.Filesystem is
             end if;
       end case;
 
-      Log ("deleting file: " & This & P (Kind (This)'Image) & " OK");
+      if Debug then
+         Log ("deleting file: " & This & P (Kind (This)'Image) & " OK");
+      end if;
    end Delete_File;
 
    -----------------
@@ -586,48 +758,53 @@ package body Den.Filesystem is
 
    function Pseudocanonical (This : Path) return Absolute_Path
    is
+      Real : constant String := Try_Canonical (This);
    begin
-      if Canonizable (This) then
-         return Canonical (This);
+      if Real /= "" then
+         return Real;
       end if;
 
       declare
+         Max_Hops : constant := 40; -- As in Linux, for following links
+         Hops     : Natural := 0;
+
          Parted : Path_Parts := Parts (Absolute (This));
          I      : Integer := Parted.First_Index;
       begin
          while I <= Parted.Last_Index loop
-            if Eat_Dots (This, Parted, I) then
+            if Eat_Dots (This, Parted, I, Drop_Excess => True) then
                null; -- Eat_Dots does what has to be done
             else
                declare
                   Phead : constant Path_Parts    := Parted.Up_To (I);
                   Head  : constant Absolute_Path := Phead.To_Path;
                   Ptail : constant Path_Parts    := Parted.From (I + 1);
+
+                  --  At this point Head is absnormal, though may be a softlink.
+                  --  We cannot replace a link by a target that is a bad path,
+                  --  nor keep on doing it for those whose target goes through
+                  --  themselves, so these are left as they are.
+                  Real_Head : constant String :=
+                                (if Is_Softlink (Head)
+                                 then Try_Canonical (Head)
+                                 else "");
                begin
-                  --  At this point Head is absnormal, though may be a softlink
-                  if Is_Softlink (Head) then
-                     if Is_Broken (Head) then
-                        if Can_Scrub (Target (Head)) then
-                           Parted :=
-                             Parts (Parent (Head)) -- Parent of broken link
-                             & Parts (Scrub (Target (Head))) -- Link target
-                             & Ptail; -- Remainder
-                        else
-                           --  We cannot replace the link with its target, as
-                           --  it is a bad path, so simply leave as is.
-                           I := I + 1;
-                        end if;
-                     elsif not Canonizable (Head) then
-                        --  Leave as is
-                        I := I + 1;
-                     else -- Valid link
-                        --  Substitute target plus tail
-                        Parted := Parts (Canonical (Head)) & Ptail;
-                        --  No need to go over parts guaranteed to be good
-                        I := Integer (Parts (Canonical (Head)).Length) + 1;
-                     end if;
+                  if not Is_Softlink (Head) then
+                     I := I + 1;
+                  elsif Real_Head /= "" then
+                     --  Valid link: substitute target plus tail, and there's no
+                     --  need to go over the parts that are guaranteed to be good
+                     I      := Integer (Parts (Real_Head).Length) + 1;
+                     Parted := Parts (Real_Head) & Ptail;
+                  elsif Can_Scrub (Target (Head))
+                    and then Is_Broken (Head)
+                    and then Hops < Max_Hops
+                  then
+                     --  The target may be anywhere, so start over with it
+                     Hops   := Hops + 1;
+                     Parted := Parts (Absolute (Resolve (Head))) & Ptail;
+                     I      := Parted.First_Index;
                   else
-                     --  Just move on to the next bit
                      I := I + 1;
                   end if;
                end;
@@ -646,6 +823,20 @@ package body Den.Filesystem is
                       Canonicalize : Boolean := False)
                       return Path
    is
+
+      ---------------
+      -- Same_Root --
+      ---------------
+
+      --  Drive letters and server names are not case sensitive. This is not
+      --  done for the rest of the path, as that can vary in a same filesystem,
+      --  and a longer result is always correct whereas a shorter one may not.
+
+      function Same_Root (L, R : String) return Boolean
+      is (if Dir_Separator = '\'
+          then AAA.Strings.To_Lower_Case (L) = AAA.Strings.To_Lower_Case (R)
+          else L = R);
+
       F : Path_Parts := Parts
         (if Canonicalize
          then Pseudocanonical (From)
@@ -657,33 +848,34 @@ package body Den.Filesystem is
    begin
       Log ("Relative: " & From & " --> " & Into & " ...");
 
-      --  Start by using the parent if From is not a folder
-      if Exists (From) and then Kind (From) /= Directory then
+      --  From has to be a folder, if it exists, or lead to one
+      if Exists (From) and then Target_Kind (From) /= Directory then
          raise Use_Error with
            Error ("From is not a directory: " & From
                   & " (kind: " & Kind (From)'Image & ")");
       end if;
 
+      --  If the first element is different, these are paths into different
+      --  drives or network locations
+      if not Same_Root (F.First_Element, T.First_Element) then
+         return T.To_Path;
+      end if;
+
+      --  Remove the common prefix
+      loop
+         F.Delete_First;
+         T.Delete_First;
+
+         exit when F.Is_Empty or else T.Is_Empty
+           or else F.First_Element /= T.First_Element;
+      end loop;
+
       --  Trivial case: the same path
-      if F = T then
+      if F.Is_Empty and then T.Is_Empty then
          raise Bad_Operation with
            "Both paths are the same in Relative_Path: "
            & From & " --> " & Into;
       end if;
-
-      --  If the first element is different, these are paths into different
-      --  drives:
-      if F.First_Element /= T.First_Element then
-         return Absnormal (Into);
-      end if;
-
-      --  Remove the common prefix
-      while F.First_Element = T.First_Element loop
-         F.Delete_First;
-         T.Delete_First;
-
-         exit when F.Is_Empty or else T.Is_Empty;
-      end loop;
 
       --  The paths are now at their divergence point; we must ascend as many
       --  times as parts remain in From.

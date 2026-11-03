@@ -7,7 +7,7 @@ package Den with Preelaborate is
 
    Debug_Flag : constant String := "DEN_DEBUG";
    --  Set it in the environment to any value (even empty) to enable debug
-   --  logging output.
+   --  logging output, which goes to standard error.
 
    Bad_Operation : exception;
    --  Raised when some transformation between paths can be completed
@@ -22,7 +22,9 @@ package Den with Preelaborate is
    Dots_Parent_Dir  : constant String := "..";
    Dots_Current_Dir : constant String := ".";
 
-   --  A raw, system-encoded path denoting a file or folder, but well-formed
+   --  A raw path denoting a file or folder, but well-formed. Names are opaque
+   --  for Den: they are the bytes stored by the filesystem on Unix-like
+   --  systems, and UTF-8 on Windows regardless of the code page.
    subtype Path is String
      with Dynamic_Predicate => Path /= ""
      --  not empty
@@ -36,16 +38,17 @@ package Den with Preelaborate is
    --  not containing consecutive separators, except on Windows for net paths
 
    subtype Absolute_Path is Path
-     with Dynamic_Predicate =>
-       GNAT.OS_Lib.Is_Absolute_Path (Absolute_Path);
+     with Dynamic_Predicate => Is_Absolute (Absolute_Path);
+   --  A path that doesn't depend on the current directory or drive
 
-   function Driveless_Root return Absolute_Path with Inline;
+   function Driveless_Root return Path with Inline;
    --  The root of the filesystem in Unix-like (/), the current drive root (\)
-   --  on Windows without the actual drive (\).
+   --  on Windows without the actual drive (\), which isn't an absolute path.
 
    subtype Relative_Path is Path
-     with Dynamic_Predicate =>
-       not GNAT.OS_Lib.Is_Absolute_Path (Relative_Path);
+     with Dynamic_Predicate => Is_Relative (Relative_Path);
+   --  A path without any root or drive, which can be appended to another one.
+   --  On Windows, \foo and C:foo are neither relative nor absolute.
 
    subtype Normal_Path is Path with
      Dynamic_Predicate => Is_Normal (Normal_Path);
@@ -74,8 +77,10 @@ package Den with Preelaborate is
    --  Fix trailing '/' and duplicated "//". May raise Bad_Path if no good path
    --  remains after scrubbing. Will respect initial '\\' on Windows.
    --
-   --  DOES NOT fix reversed slashes. This means that using non-platform
-   --  separators will be interpreted as any other character.
+   --  DOES NOT fix reversed slashes, which are left as they are. On Windows,
+   --  where git produces paths with forward slashes, these remain separators
+   --  for the OS and for subprograms like Parts or Parent. Paths that are
+   --  rebuilt from their parts by those subprograms use only backslashes.
 
    function Can_Scrub (This : String) return Boolean;
    --  Says if Scrub would not raise Bad_Path;
@@ -89,8 +94,8 @@ package Den with Preelaborate is
 
    subtype Part is String with
      Dynamic_Predicate =>
-       (for all Char of Part => Char /= Dir_Separator)
-        or else Is_Root (Part);
+       (for all Char of Part => not Is_Dir_Separator (Char))
+        or else String_Is_Root (Part);
 
    function Contains_Parts (This : AAA.Strings.Vector) return Boolean
    is (for all P of This => P in Part);
@@ -106,7 +111,7 @@ package Den with Preelaborate is
    function Parts (This : Path) return Path_Parts
      with Post =>
        not Parts'Result.Is_Empty
-       and then Is_Root (Parts'Result.First_Element) = Is_Absolute (This);
+       and then Is_Root (Parts'Result.First_Element) = Has_Root (This);
 
    function Is_Normal (This : Path) return Boolean
    is (for all P of Parts (This) => P not in Relative_Parts);
@@ -143,16 +148,17 @@ package Den with Preelaborate is
    --  A string that may be useful while debugging, says the kind of This
 
    function Kind (This : Path; Resolve_Links : Boolean := False) return Kinds;
-   --  May return Softlink for a self-referential link even with Resolve_Links!
+   --  With Resolve_Links, a softlink that cannot be resolved, as it is broken or
+   --  loops, gives Nothing.
 
    function Target_Kind (This : Path) return Kinds
    is (Kind (This, Resolve_Links => True));
-   --  May still return softlink if the softlink is unresolvable
 
    function Is_Hard (This : Path) return Boolean
-   is ((for all A of Ancestors (This) => Kind (A) = Directory)
+   is (Is_Normal (This)
+       and then (for all A of Ancestors (This) => Kind (A) = Directory)
        and then Kind (This) in Canonical_Kinds);
-   --  Note that a non-existing path may be hard
+   --  This exists, and neither it nor any of its ancestors is a softlink
 
    function Exists (This : Path; Resolve_Links : Boolean := False)
                     return Boolean
@@ -162,12 +168,24 @@ package Den with Preelaborate is
    is (Exists (This, Resolve_Links => True));
 
    function Is_Absolute (This : Path) return Boolean;
+   --  True if This doesn't depend on the current directory or drive
+
+   function Is_Relative (This : String) return Boolean;
+   --  True if This has no root or drive, so it can be appended to another path
+
+   function Has_Root (This : Path) return Boolean;
+   --  True if This starts at a root. This includes all absolute paths, and \foo
+   --  on Windows, which starts at the root of the current drive.
+
+   function Is_Dir_Separator (Char : Character) return Boolean with Inline;
+   --  True for Dir_Separator, and also for '/' on Windows
 
    function String_Is_Root (This : String) return Boolean;
    --  Used to break recursion among predicates
 
    function Is_Root (This : Path) return Boolean;
-   --  True if This denotes explicitly a root name ("/", "C:\")
+   --  True if This denotes explicitly a root name ("/", "C:\", "\\srv\share").
+   --  "C:" is not one, as it is the current directory of that drive.
 
    function Root (This : Absolute_Path) return Root_Path;
 
@@ -205,15 +223,14 @@ package Den with Preelaborate is
    --  Says if Canonical (This) will succeed.
 
    function Name (This : Path) return Part
-     with Post => (if Is_Root (This) then Name'Result = This);
+     with Post => (if Is_Root (This) then Is_Root (Name'Result));
    --  Just the last component in the path; the name of a root is itself.
 
    function Simple_Name (This : Path) return Part renames Name;
    --  For Ada.Directories compatibility
 
    function Has_Parent (This : Path) return Boolean
-   is (not Is_Root (This)
-       and then (for some Char of This => Char = Dir_Separator));
+   is (Integer (Parts (This).Length) > 1);
    --  Say if This, as-is, has a parent. It may have one logically if it's a
    --  simple name and the current directory is not the root, but not if given
    --  as a simple name.
@@ -236,8 +253,8 @@ package Den with Preelaborate is
 
    function Target_Length (This : Path) return Natural
      with Pre => Kind (This) = Softlink;
-   --  The length of a softlink target name. Not generally useful to clients
-   --  but who knows...
+   --  The length in bytes of a softlink target name. Not generally useful to
+   --  clients but who knows...
 
    function Target (This : Path) return String
      with Post =>
@@ -271,18 +288,44 @@ private
    function Dir_Separator return Character
    is (GNAT.OS_Lib.Directory_Separator);
 
-   function Driveless_Root return Absolute_Path is (1 => Dir_Separator);
+   function Driveless_Root return Path is (1 => Dir_Separator);
 
-   function Eat_Dots (This   :        Path;
-                      Parted : in out Path_Parts;
-                      I      : in out Integer)
+   function On_Windows return Boolean is (Dir_Separator = '\') with Inline;
+
+   --  The parsing of paths takes the platform as a parameter so the rules of
+   --  all platforms can be tested on any of them.
+
+   function Prefix_Length (This : String; Windows : Boolean) return Natural;
+   --  The length of whatever precedes the names in This: a root, including the
+   --  separator after it if any, or a drive without separator as in C:foo.
+
+   function Prefix_Is_Drive (This : String; Windows : Boolean) return Boolean;
+   --  True if the prefix is just a drive, as in C: or C:foo
+
+   function Absolute_For (This : String; Windows : Boolean) return Boolean;
+   --  See Is_Absolute
+
+   function Split_Path (This : String; Windows : Boolean)
+                        return AAA.Strings.Vector;
+   --  The prefix, if any, and the names in This. A prefix that is a root always
+   --  ends in a separator, and only contains native separators.
+
+   function Eat_Dots (This        :        Path;
+                      Parted      : in out Path_Parts;
+                      I           : in out Integer;
+                      Drop_Excess :        Boolean := False)
                       return Boolean;
    --  Removes only "." and ".." at pos I. Return True if something removed,
-   --  False otherwise. May raise Bad_Path
+   --  False otherwise. A ".." with nothing to go up from raises Bad_Path,
+   --  unless Drop_Excess, in which case it is just removed.
 
    function Is_Softlink (This : Path) return Boolean;
    --  Always false in platforms without softlink support. True even for broken
    --  links. False if This doesn't designate anything in the filesystem.
+
+   function Try_Canonical (This : String) return String;
+   --  The canonical path to This, or "" if it has none. Use this instead of
+   --  Canonizable followed by Canonical, which would find it twice.
 
    function OS_Canonical (This : Path) return String;
    --  The OS own canonicalization function. Returns a canonical path if

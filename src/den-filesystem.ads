@@ -34,14 +34,20 @@ package Den.Filesystem is
                       Canonicalize : Boolean := False)
                       return Path;
    --  Try to find a relative path from From into Into; this may be impossible
-   --  on Windows for paths in different drive letters. From and Into are
-   --  Absnormalized prior to search, unless Canonicalize, in which case
-   --  they're Pseudocanonicalized. If no relative path can be found, an
-   --  absolute path to Into will be returned. TODO/WARNING: consider whether
-   --  the filesystem is case-insensitive or case-preserving. Currently no case
-   --  transformations will be applied and case-sensitive will be presumed.
-   --  NOTE: From should be a folder. This will be detected for existing paths,
-   --  but is not for hypothetical non-existing paths.
+   --  on Windows for paths in different drive letters or network locations.
+   --  From and Into are Absnormalized prior to search, unless Canonicalize, in
+   --  which case they're Pseudocanonicalized. Without Canonicalize, the result
+   --  is valid as long as From doesn't go through softlinks. If no relative
+   --  path can be found, an absolute path to Into will be returned.
+   --
+   --  Only drive letters and server names are compared without regard to case
+   --  on Windows. Otherwise, paths are compared as they are, because case can
+   --  vary within a same filesystem. The result is correct in any case, but it
+   --  may be longer than needed. Canonicalize avoids that for existing paths.
+   --
+   --  NOTE: From should be a folder, or lead to one. This will be detected for
+   --  existing paths, raising Use_Error, but is not for hypothetical
+   --  non-existing paths. Raises Bad_Operation if both are the same path.
 
    -----------------------
    --  File Operations  --
@@ -50,14 +56,19 @@ package Den.Filesystem is
       Overwrite_Files      : Boolean := False; -- When dst is a file
       Merge_Dirs           : Boolean := False; -- When both src/dst are dirs
       Resolve_Links        : Boolean := False; -- Copy target instead of link
-      Preserve_Permissions : Boolean := True;  -- Ownership
+      Preserve_Permissions : Boolean := True;  -- Mode bits
       Preserve_Timestamps  : Boolean := False; -- Creation/modification time
    end record;
 
    procedure Copy (Src, Dst : Path;
                    Options  : Copy_Options := (others => <>));
-   --  Make a copy of a file/dir/link. For dirs, this acts as rsync when paths
-   --  end in '/' (this is also rclone behavior).
+   --  Make a copy of a file/dir/link. A file or link copied to a folder goes
+   --  inside it. The contents of a folder go into Dst, which must exist. With
+   --  Resolve_Links, what a link points to is copied as if it were at the link
+   --  and with its name, and a folder is created as Dst if needed; only links
+   --  that cannot be resolved are copied as links. Raises Use_Error rather than
+   --  overwriting a file with itself, copying a folder into itself, or
+   --  following links that lead back to a folder being copied.
 
    procedure Copy_Attributes (Src, Dst    : Path;
                               Permissions : Boolean;
@@ -105,6 +116,11 @@ package Den.Filesystem is
    procedure Delete_Directory
      (This : Path;
       Options : Delete_Directory_Options := (others => <>));
+   --  Without Recursive, This must be an empty directory, and otherwise nothing
+   --  is deleted. With Recursive, a missing path is not an error, and This can
+   --  be of any kind. Softlinks found are treated according to Delete_Files, so
+   --  by default they are removed and what they point to is left alone. Special
+   --  files are removed, unlike what Delete_File does by itself.
 
    procedure Rmdir
      (This    : Path;
@@ -112,7 +128,9 @@ package Den.Filesystem is
       renames Delete_Directory;
 
    procedure Delete_Tree (This : Path);
-   --  Recursive deletion
+   --  Recursive deletion, see Delete_Directory. Don't use it on trees that other
+   --  users can write to, as a folder replaced by a link in the middle of the
+   --  deletion would be followed.
 
    function Delete_Empty_Tree (This : Path) return Boolean;
    --  Delete a full tree only if is already empty (nothing but empty folders).

@@ -13,24 +13,13 @@ project Den is
      external ("DEN_LIBRARY_TYPE", external ("LIBRARY_TYPE", "static"));
    for Library_Kind use Library_Type;
 
-   for Languages use ("Ada", "C++");
+   for Languages use ("Ada", "C");
 
-   OS_Sources := ();
-   Detect_Windows := external ("SystemRoot", "not_windows");
-
-   case Detect_Windows is
-      when "not_windows" =>
-         OS_Sources := OS_Sources & ("src/unix/");
-      when others =>
-         OS_Sources := OS_Sources &("src/windows/");
-   end case;
-
-   for Source_Dirs use ("src/", "config/") & OS_Sources;
+   for Source_Dirs use ("src/", "config/");
 
    package Compiler is
       for Default_Switches ("Ada") use Den_Config.Ada_Compiler_Switches;
       for Default_Switches ("C") use ("-g", "-Wall");
-      for Default_Switches ("C++") use ("-g", "-Wall");
    end Compiler;
 
    package Binder is
